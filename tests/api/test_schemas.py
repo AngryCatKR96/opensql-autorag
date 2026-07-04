@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from opensql_autorag_api.main import app
 from opensql_autorag_api.schemas import DocumentUploadResponse, SearchRequest
 
 
@@ -14,3 +15,8 @@ def test_upload_response_serializes_ids():
 def test_search_request_defaults_top_k_to_five():
     request = SearchRequest(query="OpenSQL pgvector")
     assert request.top_k == 5
+
+
+def test_version_upload_route_is_registered():
+    paths = {route.path for route in app.routes}
+    assert "/documents/{document_id}/versions" in paths

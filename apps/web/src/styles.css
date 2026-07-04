@@ -9,7 +9,8 @@ body {
 }
 
 button,
-.uploadButton {
+.uploadButton,
+.versionButton {
   border: 1px solid #cbd5e1;
   background: #ffffff;
   color: #172033;
@@ -29,6 +30,10 @@ button:hover,
 }
 
 .uploadButton input {
+  display: none;
+}
+
+.versionButton input {
   display: none;
 }
 
@@ -127,7 +132,7 @@ button:hover,
 .tableHeader,
 .tableRow {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) 80px 70px;
+  grid-template-columns: minmax(140px, 1fr) 70px 70px 72px;
   gap: 12px;
   align-items: center;
 }
@@ -149,6 +154,11 @@ button:hover,
 .tableRow span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.versionButton {
+  padding: 7px 8px;
+  font-size: 13px;
 }
 
 .searchbar {

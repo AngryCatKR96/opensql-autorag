@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 
@@ -25,8 +26,10 @@ def list_documents() -> list[dict]:
         return Repository(connection).list_documents()
 
 
-@app.post("/documents", response_model=DocumentUploadResponse)
-async def upload_document(file: Annotated[UploadFile, File()]) -> DocumentUploadResponse:
+async def _store_document_upload(
+    file: UploadFile,
+    document_id: UUID | None = None,
+) -> DocumentUploadResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="filename is required")
     suffix = Path(file.filename).suffix.lower().lstrip(".")
@@ -45,6 +48,7 @@ async def upload_document(file: Annotated[UploadFile, File()]) -> DocumentUpload
             source_type=suffix,
             source_path=str(source_path),
             file_hash=file_hash,
+            document_id=document_id,
         )
 
     return DocumentUploadResponse(
@@ -52,6 +56,19 @@ async def upload_document(file: Annotated[UploadFile, File()]) -> DocumentUpload
         version_id=created.version_id,
         job_id=created.job_id,
     )
+
+
+@app.post("/documents", response_model=DocumentUploadResponse)
+async def upload_document(file: Annotated[UploadFile, File()]) -> DocumentUploadResponse:
+    return await _store_document_upload(file)
+
+
+@app.post("/documents/{document_id}/versions", response_model=DocumentUploadResponse)
+async def upload_document_version(
+    document_id: UUID,
+    file: Annotated[UploadFile, File()],
+) -> DocumentUploadResponse:
+    return await _store_document_upload(file, document_id=document_id)
 
 
 @app.post("/search")

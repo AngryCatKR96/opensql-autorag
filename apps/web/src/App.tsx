@@ -32,13 +32,14 @@ export function App() {
     setDocuments(await response.json());
   }
 
-  async function upload(event: ChangeEvent<HTMLInputElement>) {
+  async function upload(event: ChangeEvent<HTMLInputElement>, documentId?: string) {
     const file = event.target.files?.[0];
     if (!file) return;
     setUploading(true);
     const form = new FormData();
     form.append("file", file);
-    await fetch("/api/documents", { method: "POST", body: form });
+    const path = documentId ? `/api/documents/${documentId}/versions` : "/api/documents";
+    await fetch(path, { method: "POST", body: form });
     event.target.value = "";
     await refreshDocuments();
     setUploading(false);
@@ -70,7 +71,7 @@ export function App() {
         <label className="uploadButton">
           <UploadCloud size={16} />
           <span>{uploading ? "Uploading" : "Upload"}</span>
-          <input type="file" accept=".pdf,.docx,.md,.txt" onChange={upload} />
+          <input type="file" accept=".pdf,.docx,.md,.txt" onChange={(event) => upload(event)} />
         </label>
         <button onClick={refreshDocuments}>
           <RefreshCw size={16} />
@@ -100,6 +101,7 @@ export function App() {
               <span>Title</span>
               <span>Type</span>
               <span>Chunks</span>
+              <span>Version</span>
             </div>
             {documents.length === 0 ? <p className="muted">No documents indexed.</p> : null}
             {documents.map((doc) => (
@@ -107,6 +109,14 @@ export function App() {
                 <strong>{doc.title}</strong>
                 <span>{doc.source_type}</span>
                 <span>{doc.active_chunk_count}</span>
+                <label className="versionButton">
+                  New
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.md,.txt"
+                    onChange={(event) => upload(event, doc.id)}
+                  />
+                </label>
               </article>
             ))}
           </section>
