@@ -193,6 +193,42 @@ class Repository:
             )
             return list(cursor.fetchall())
 
+    def get_chunk_context(self, chunk_id: UUID) -> list[dict]:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id AS chunk_id, document_id, version_id, text, heading_path,
+                       page_start, page_end, chunk_index
+                FROM document_chunks
+                WHERE version_id = (
+                    SELECT version_id FROM document_chunks WHERE id = %s
+                )
+                AND chunk_index BETWEEN (
+                    SELECT chunk_index - 1 FROM document_chunks WHERE id = %s
+                ) AND (
+                    SELECT chunk_index + 1 FROM document_chunks WHERE id = %s
+                )
+                ORDER BY chunk_index
+                """,
+                (chunk_id, chunk_id, chunk_id),
+            )
+            return list(cursor.fetchall())
+
+    def latest_sync_status(self, document_id: UUID) -> dict | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, document_id, version_id, reused_count, embedded_count,
+                       retired_count, failed_count, elapsed_ms, created_at
+                FROM sync_runs
+                WHERE document_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (document_id,),
+            )
+            return cursor.fetchone()
+
     def insert_chunk_reusing_embedding(
         self,
         document_id: UUID,
