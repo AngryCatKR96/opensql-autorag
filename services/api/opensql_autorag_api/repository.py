@@ -9,6 +9,10 @@ from psycopg import Connection
 from opensql_autorag.domain import Chunk
 
 
+def _vector_literal(embedding: list[float]) -> str:
+    return "[" + ",".join(f"{value:.8f}" for value in embedding) + "]"
+
+
 @dataclass(frozen=True)
 class CreatedVersion:
     document_id: UUID
@@ -135,7 +139,7 @@ class Repository:
     ) -> UUID:
         chunk_id = uuid4()
         heading_path = " / ".join(chunk.location.heading_path)
-        vector_literal = "[" + ",".join(f"{value:.8f}" for value in embedding) + "]"
+        vector_literal = _vector_literal(embedding)
         vector_hash = hashlib.sha256(vector_literal.encode("utf-8")).hexdigest()
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -170,6 +174,24 @@ class Repository:
                 (chunk_id, embedding_model_id, vector_literal, vector_hash),
             )
         return chunk_id
+
+    def search_chunks(self, query_embedding: list[float], top_k: int) -> list[dict]:
+        vector_literal = _vector_literal(query_embedding)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT c.id AS chunk_id, c.document_id, c.version_id, c.text,
+                       c.heading_path, c.page_start, c.page_end,
+                       1 - (e.embedding <=> %s::vector) AS score
+                FROM chunk_embeddings e
+                JOIN document_chunks c ON c.id = e.chunk_id
+                WHERE c.active = TRUE
+                ORDER BY e.embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (vector_literal, vector_literal, top_k),
+            )
+            return list(cursor.fetchall())
 
     def insert_chunk_reusing_embedding(
         self,

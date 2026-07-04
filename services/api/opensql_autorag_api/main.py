@@ -55,4 +55,10 @@ async def upload_document(file: UploadFile = File(...)) -> DocumentUploadRespons
 
 @app.post("/search")
 def search_documents(request: SearchRequest) -> dict:
-    return {"query": request.query, "top_k": request.top_k, "results": []}
+    from opensql_autorag.embeddings import HashEmbeddingProvider
+
+    provider = HashEmbeddingProvider(dimension=settings.embedding_dimension)
+    query_embedding = provider.embed(request.query)
+    with get_connection() as connection:
+        rows = Repository(connection).search_chunks(query_embedding, request.top_k)
+    return {"query": request.query, "top_k": request.top_k, "results": rows}
