@@ -1,5 +1,4 @@
 import pytest
-
 from opensql_autorag.embeddings import HashEmbeddingProvider, validate_dimension
 
 

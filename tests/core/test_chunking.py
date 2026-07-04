@@ -5,7 +5,11 @@ from opensql_autorag.domain import SourceLocation, TextBlock
 def test_chunker_preserves_heading_path_and_source_location():
     blocks = [
         TextBlock("OpenSQL overview", SourceLocation(1, 1, ("Intro",)), 0),
-        TextBlock("pgvector stores embeddings for semantic search.", SourceLocation(1, 1, ("Intro",)), 1),
+        TextBlock(
+            "pgvector stores embeddings for semantic search.",
+            SourceLocation(1, 1, ("Intro",)),
+            1,
+        ),
     ]
 
     chunks = SemanticChunker(target_tokens=20, overlap_tokens=4).chunk("doc-1", blocks)

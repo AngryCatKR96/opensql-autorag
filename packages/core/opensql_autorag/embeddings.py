@@ -23,7 +23,7 @@ class HashEmbeddingProvider:
         values: list[float] = []
         counter = 0
         while len(values) < self.dimension:
-            digest = hashlib.sha256(f"{counter}:{text}".encode("utf-8")).digest()
+            digest = hashlib.sha256(f"{counter}:{text}".encode()).digest()
             for offset in range(0, len(digest), 4):
                 if len(values) == self.dimension:
                     break

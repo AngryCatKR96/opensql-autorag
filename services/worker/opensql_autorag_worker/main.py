@@ -10,12 +10,15 @@ from opensql_autorag.domain import Chunk, ChunkDecision, SourceLocation
 from opensql_autorag.embeddings import HashEmbeddingProvider
 from opensql_autorag_api.db import get_connection
 from opensql_autorag_api.repository import Repository
+
 from opensql_autorag_worker.extractors import extract_blocks
 from opensql_autorag_worker.processor import IndexProcessor
 
 
 def _row_to_chunk(row: dict) -> Chunk:
-    heading_path = tuple(part.strip() for part in str(row["heading_path"]).split("/") if part.strip())
+    heading_path = tuple(
+        part.strip() for part in str(row["heading_path"]).split("/") if part.strip()
+    )
     return Chunk(
         stable_key=str(row["stable_key"]),
         text=str(row["text"]),
@@ -47,7 +50,9 @@ def process_next_job() -> bool:
             source_path = Path(repo.get_version_source_path(version_id))
             blocks = extract_blocks(source_path)
             current_chunks = processor.chunker.chunk(str(document_id), blocks)
-            previous_chunks = tuple(_row_to_chunk(row) for row in repo.load_active_chunks(document_id))
+            previous_chunks = tuple(
+                _row_to_chunk(row) for row in repo.load_active_chunks(document_id)
+            )
             plan = planner.plan(previous=previous_chunks, current=current_chunks)
             for item in plan.chunks:
                 if item.decision == ChunkDecision.EMBED:

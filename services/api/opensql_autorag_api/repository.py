@@ -4,9 +4,8 @@ import hashlib
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from psycopg import Connection
-
 from opensql_autorag.domain import Chunk
+from psycopg import Connection
 
 
 def _vector_literal(embedding: list[float]) -> str:
@@ -64,7 +63,8 @@ class Repository:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT d.id, d.title, d.source_type, d.current_version_id, d.created_at, d.updated_at,
+                SELECT d.id, d.title, d.source_type, d.current_version_id,
+                       d.created_at, d.updated_at,
                        COUNT(c.id) FILTER (WHERE c.active) AS active_chunk_count
                 FROM documents d
                 LEFT JOIN document_chunks c ON c.document_id = d.id
@@ -242,7 +242,9 @@ class Repository:
                 (chunk_id, document_id, chunk.content_hash, embedding_model_id),
             )
             if cursor.rowcount != 1:
-                raise ValueError(f"previous embedding not found for chunk hash: {chunk.content_hash}")
+                raise ValueError(
+                    f"previous embedding not found for chunk hash: {chunk.content_hash}"
+                )
         return chunk_id
 
     def complete_indexing(
@@ -264,7 +266,8 @@ class Repository:
             cursor.execute(
                 """
                 UPDATE document_versions
-                SET status = 'indexed', extracted_text_hash = COALESCE(extracted_text_hash, file_hash)
+                SET status = 'indexed',
+                    extracted_text_hash = COALESCE(extracted_text_hash, file_hash)
                 WHERE id = %s
                 """,
                 (version_id,),

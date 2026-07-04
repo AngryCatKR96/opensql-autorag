@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 
@@ -25,7 +26,7 @@ def list_documents() -> list[dict]:
 
 
 @app.post("/documents", response_model=DocumentUploadResponse)
-async def upload_document(file: UploadFile = File(...)) -> DocumentUploadResponse:
+async def upload_document(file: Annotated[UploadFile, File()]) -> DocumentUploadResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="filename is required")
     suffix = Path(file.filename).suffix.lower().lstrip(".")
