@@ -106,6 +106,35 @@ list and says so, both in the API response and in the MCP tool result. That case
 looks identical to a query with no matches otherwise, and it is the one a
 misconfigured process actually produces.
 
+## Chunking
+
+Documents are split at their headings, so a chunk is a section rather than a
+fixed slice. That is what gives search results their section context and what
+lets delta sync re-embed one edited section instead of a whole document.
+
+Taken alone it also produces chunks too small to retrieve: a one line section
+becomes eight words, and eight words carry too little for a query to tell them
+apart — on the demo corpus every such chunk scored within 0.02 of every other. A
+section under `min_tokens` (a fifth of `target_tokens`) is therefore folded into
+its neighbour, and one at the end folds backwards. Merging is skipped where it
+would push the chunk past the target: a one line section beside a long one is
+left alone rather than made oversized.
+
+A merged chunk is labelled with the deepest heading its sections share, so a
+chunk holding Travel, Equipment and Receipts reads as "Expense policy" rather
+than claiming to be any one of them.
+
+The cost is delta granularity. Sections that merge share a chunk, so editing one
+re-embeds the others with it — a four section document small enough to become a
+single chunk is re-embedded whole. Measured on the demo corpus the merge took 30
+chunks to 18 and the median chunk from 42 to 80 words, while an edit to one
+section of a longer document still re-embedded exactly one chunk.
+
+Retrieval accuracy is unchanged by it here: the expected chunk ranked first for
+all seven test questions both before and after. What it fixed was a question the
+corpus previously got wrong, where an eight word section had been competing on
+equal terms with everything else.
+
 ## Search modes
 
 Retrieval has two arms. The vector arm answers what a passage is about; the
