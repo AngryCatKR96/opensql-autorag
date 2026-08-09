@@ -186,23 +186,36 @@ other.
 6. Upload a revised copy of the same document content as a new version.
 7. Show the sync run counts: reused chunks, embedded chunks, retired chunks.
 8. Search again and show that the latest source metadata is returned.
-9. Click *Sign in with Outline* and authorize the application. Search again: wiki
-   documents appear, limited to the collections that account can read. Sign in as
-   somebody with narrower access and run the same query — the results shrink. See
-   [Syncing an Outline wiki](outline.md#permissions).
-10. Delete a page in Outline and search once more: it is gone from the results,
+9. Search for an identifier rather than a concept — an error code, a hostname, a
+   setting name. Each result is badged with the arm that found it; one the
+   embedding alone would have blurred comes back badged by both. Re-run it with
+   `"mode": "vector"` to show what the keyword arm was contributing.
+10. Click *Sign in with Outline* and authorize the application. Search again: wiki
+    documents appear, limited to the collections that account can read. Sign in as
+    somebody with narrower access and run the same query — the results shrink. See
+    [Syncing an Outline wiki](outline.md#permissions).
+11. Delete a page in Outline and search once more: it is gone from the results,
     and the console marks it "removed at source".
-11. Start the MCP server.
+12. Start the MCP server.
 
 ```bash
 PYTHONPATH=packages/core:services/api:services/mcp .venv/bin/python -m opensql_autorag_mcp.server
 ```
 
-12. Connect an MCP client and call `search_documents`.
+13. Connect an MCP client and call `search_documents`. It answers over the same
+    retrieval path as the console, scoped to the token the server runs with.
 
 ## Positioning
 
-- OpenSQL is the metadata, version, job, and vector store.
-- pgvector handles semantic retrieval with `vector(384)` embeddings.
-- Delta Sync avoids full re-embedding after small document edits.
-- MCP exposes the same retrieval capability to AI tools and agents.
+- OpenSQL is the metadata, version, source, session, job, and vector store. Every
+  piece of state the platform has lives in it.
+- pgvector handles semantic retrieval with `vector(384)` embeddings, alongside
+  PostgreSQL full text search; the two are fused rather than chosen between.
+- Delta Sync avoids full re-embedding after small document edits, which is what
+  makes a continuously edited wiki affordable to keep indexed rather than merely
+  possible to index.
+- Retrieval honours the permissions of the wiki a document came from, enforced in
+  SQL. Indexing an internal wiki does not flatten its access control.
+- Embeddings are computed in-process; no document text or query leaves the host.
+- MCP exposes the same retrieval capability to AI tools and agents — the same
+  code path as the REST API, not a second implementation of it.
