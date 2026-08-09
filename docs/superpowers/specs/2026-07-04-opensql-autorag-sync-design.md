@@ -100,7 +100,7 @@ The backend is split into small units with clear responsibilities:
 - MCP: Python MCP server process importing the same search module as the API.
 - Frontend: React with Vite for a compact product console.
 - Database: OpenSQL with pgvector. Local development may use PostgreSQL with pgvector only as a compatibility fallback when OpenSQL is not available.
-- Text extraction: PyMuPDF for PDFs, python-docx for DOCX, a Markdown reader that understands headings, and a plain reader for text.
+- Text extraction: pypdf for PDFs, python-docx for DOCX, a Markdown reader that understands headings, and a plain reader for text. PyMuPDF was the original choice and reads PDFs better, but it is AGPL, which the project's own MIT licence cannot carry; pypdf is BSD and supplies both the page text and the bookmark tree this design depends on.
 - Embedding: configurable provider with `intfloat/multilingual-e5-small` as the default contest model, loaded and run in-process. No document text or query leaves the host.
 - Keyword retrieval: PostgreSQL full text search over a GIN expression index, with the text search configuration fixed to match the index.
 
@@ -320,3 +320,4 @@ Recorded so the two documents can be read together.
 - **The console is one page, not four screens.** Sync detail is shown as a per-document chunk count and a removal marker rather than a dedicated screen.
 - **Chunking gained a minimum section size.** Splitting at headings alone produced chunks too small to retrieve.
 - **`query_logs` was never wired up.** The table is in the schema and nothing writes to it, so search analytics are still unbuilt rather than partly built.
+- **PDF extraction moved from PyMuPDF to pypdf**, because the project is MIT licensed and PyMuPDF is AGPL. It costs some extraction quality on awkward PDFs and buys a licence the project can actually offer.

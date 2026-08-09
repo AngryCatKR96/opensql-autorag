@@ -70,3 +70,15 @@ Anything expressed in SQL is tested against a real database rather than a fake â
 the permission filter especially, since a filter that is wrong in a way Python
 cannot see is the one worth catching. Those tests skip rather than fail when no
 database is reachable.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE).
+
+Dependencies are permissive to match: PDF extraction uses pypdf (BSD) rather
+than the more capable PyMuPDF, which is AGPL and would have made the whole work
+AGPL. psycopg is LGPL, which places no condition on the code that imports it.
+
+Running against Tmax OpenSQL needs a distribution tarball and a licence from
+Tmax; neither is in this repository, and `infra/opensql` builds an image from
+artifacts you supply. See [docs/opensql.md](docs/opensql.md).

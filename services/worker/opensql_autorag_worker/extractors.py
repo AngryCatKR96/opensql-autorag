@@ -199,50 +199,66 @@ def _extract_pdf(path: Path) -> tuple[TextBlock, ...]:
     not a structure -- so the only trustworthy outline is the bookmark tree, and
     it resolves to a page rather than to a line. Where a document has one, every
     line on a page inherits the path of the last bookmark at or before it; where
-    it does not, pages remain the only division, as before.
+    it does not, pages remain the only division.
     """
-    import fitz
+    from pypdf import PdfReader
 
+    reader = PdfReader(path)
+    headings_by_page = _pdf_headings_by_page(reader)
     blocks: list[TextBlock] = []
-    with fitz.open(path) as document:
-        headings_by_page = _pdf_headings_by_page(document)
-        for page_index, page in enumerate(document, start=1):
-            heading_path = headings_by_page.get(page_index, ())
-            for line in page.get_text().splitlines():
-                text = line.strip()
-                if text:
-                    blocks.append(
-                        TextBlock(
-                            text=text,
-                            location=SourceLocation(page_index, page_index, heading_path),
-                            block_index=len(blocks),
-                        )
+    for page_index, page in enumerate(reader.pages, start=1):
+        heading_path = headings_by_page.get(page_index, ())
+        for line in (page.extract_text() or "").splitlines():
+            text = line.strip()
+            if text:
+                blocks.append(
+                    TextBlock(
+                        text=text,
+                        location=SourceLocation(page_index, page_index, heading_path),
+                        block_index=len(blocks),
                     )
+                )
     return tuple(blocks)
 
 
-def _pdf_headings_by_page(document) -> dict[int, tuple[str, ...]]:
+def _pdf_outline(reader, items, level: int = 1):
+    """Flatten pypdf's nested outline into (level, title, page number).
+
+    Nesting is how pypdf expresses depth: a child list follows the entry it
+    belongs to, rather than each entry carrying a level of its own.
+    """
+    for item in items:
+        if isinstance(item, list):
+            yield from _pdf_outline(reader, item, level + 1)
+            continue
+        try:
+            page = reader.get_destination_page_number(item) + 1
+        except Exception:  # noqa: BLE001 - a bookmark pointing nowhere is skipped, not fatal
+            continue
+        title = str(getattr(item, "title", "") or "").strip()
+        if title:
+            yield level, title, page
+
+
+def _pdf_headings_by_page(reader) -> dict[int, tuple[str, ...]]:
     """The bookmark path in effect on each page, empty when there are none."""
     try:
-        toc = document.get_toc()
+        entries = list(_pdf_outline(reader, reader.outline))
     except Exception:  # noqa: BLE001 - a malformed outline must not fail the document
         return {}
-    if not toc:
+    if not entries:
         return {}
 
     per_page: dict[int, tuple[str, ...]] = {}
     headings: list[str] = []
-    page_count = document.page_count
-    for level, title, page in toc:
-        if page < 1:
-            continue
-        _push(headings, max(1, int(level)), str(title).strip())
-        per_page[int(page)] = tuple(headings)
+    for level, title, page in entries:
+        _push(headings, max(1, level), title)
+        per_page[page] = tuple(headings)
 
     # A bookmark stays in effect until the next one, so pages between two
     # bookmarks inherit the earlier path rather than losing it.
     current: tuple[str, ...] = ()
-    for page in range(1, page_count + 1):
+    for page in range(1, len(reader.pages) + 1):
         current = per_page.get(page, current)
         per_page[page] = current
     return per_page

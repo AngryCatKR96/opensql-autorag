@@ -119,15 +119,39 @@ def test_docx_heading_levels_nest(tmp_path: Path):
     assert paths["Refresh every three years."] == ("Employee handbook", "Equipment")
 
 
-def test_pdf_without_bookmarks_still_records_pages(tmp_path: Path):
-    fitz = pytest.importorskip("fitz")
+def write_pdf(path: Path, pages: list[str], outline: list[tuple[int, str]] | None = None) -> None:
+    """A PDF with one line per page, and optional bookmarks by page index.
 
-    document = fitz.open()
-    page = document.new_page()
-    page.insert_text((72, 72), "Plain body text.")
+    Building the fixture takes a writer, and neither pypdf nor pdfminer draws
+    text; reportlab does, and is BSD like the rest of the stack.
+    """
+    import io
+
+    from pypdf import PdfWriter
+    from reportlab.pdfgen import canvas
+
+    drawn = io.BytesIO()
+    pdf = canvas.Canvas(drawn)
+    for line in pages:
+        pdf.drawString(72, 720, line)
+        pdf.showPage()
+    pdf.save()
+    drawn.seek(0)
+
+    writer = PdfWriter(clone_from=drawn)
+    # Each bookmark points at a successive page, so the nth entry lands on page n.
+    parents: dict[int, object] = {}
+    for page_index, (level, title) in enumerate(outline or []):
+        parents[level] = writer.add_outline_item(title, page_index, parent=parents.get(level - 1))
+    with path.open("wb") as handle:
+        writer.write(handle)
+
+
+def test_pdf_without_bookmarks_still_records_pages(tmp_path: Path):
+    pytest.importorskip("pypdf")
+    pytest.importorskip("reportlab")
     path = tmp_path / "plain.pdf"
-    document.save(path)
-    document.close()
+    write_pdf(path, ["Plain body text."])
 
     blocks = extract_blocks(path)
 
@@ -136,15 +160,14 @@ def test_pdf_without_bookmarks_still_records_pages(tmp_path: Path):
 
 
 def test_pdf_pages_inherit_the_bookmark_in_effect(tmp_path: Path):
-    fitz = pytest.importorskip("fitz")
-
-    document = fitz.open()
-    for number in range(3):
-        document.new_page().insert_text((72, 72), f"Body of page {number + 1}.")
-    document.set_toc([[1, "Operations", 1], [2, "Failover", 2]])
+    pytest.importorskip("pypdf")
+    pytest.importorskip("reportlab")
     path = tmp_path / "outlined.pdf"
-    document.save(path)
-    document.close()
+    write_pdf(
+        path,
+        [f"Body of page {n + 1}." for n in range(3)],
+        outline=[(1, "Operations"), (2, "Failover")],
+    )
 
     paths = {block.text: block.location.heading_path for block in extract_blocks(path)}
 
