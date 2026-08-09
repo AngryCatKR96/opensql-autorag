@@ -19,6 +19,7 @@ class SemanticChunker:
         chunks: list[Chunk] = []
         buffer_words: list[str] = []
         buffer_location: SourceLocation | None = None
+        buffer_has_body = False
 
         for block in blocks:
             words = normalize_text(block.text).split()
@@ -30,22 +31,32 @@ class SemanticChunker:
             if buffer_words and (
                 section_changed or len(buffer_words) + len(words) > self.target_tokens
             ):
-                self._flush(document_id, chunks, buffer_words, buffer_location)
-                # Overlap carries context across a split made inside one
-                # section. Across a section boundary there is no context to
-                # carry: the new chunk would open with the previous section's
-                # words while its heading path claims the new section, and an
-                # edit to one section would then invalidate the next section's
-                # chunk as well.
-                buffer_words = (
-                    []
-                    if section_changed
-                    else buffer_words[-self.overlap_tokens :]
-                    if self.overlap_tokens
-                    else []
-                )
-                buffer_location = block.location
+                if section_changed and not buffer_has_body:
+                    # A heading whose section has no text of its own, such as a
+                    # document title immediately followed by its first
+                    # subsection. On its own it would be a chunk of two or three
+                    # words competing for a result slot, so its words go to the
+                    # section beneath it instead of forming one.
+                    buffer_location = block.location
+                else:
+                    self._flush(document_id, chunks, buffer_words, buffer_location)
+                    # Overlap carries context across a split made inside one
+                    # section. Across a section boundary there is no context to
+                    # carry: the new chunk would open with the previous section's
+                    # words while its heading path claims the new section, and an
+                    # edit to one section would then invalidate the next
+                    # section's chunk as well.
+                    buffer_words = (
+                        []
+                        if section_changed
+                        else buffer_words[-self.overlap_tokens :]
+                        if self.overlap_tokens
+                        else []
+                    )
+                    buffer_location = block.location
+                    buffer_has_body = False
             buffer_words.extend(words)
+            buffer_has_body = buffer_has_body or not block.is_heading
 
             while len(buffer_words) >= self.target_tokens:
                 window = buffer_words[: self.target_tokens]

@@ -22,6 +22,9 @@ class TextBlock:
     text: str
     location: SourceLocation
     block_index: int
+    # Whether this block is the heading that named its own section. The chunker
+    # uses it to avoid emitting a chunk that holds nothing but a heading.
+    is_heading: bool = False
 
 
 @dataclass(frozen=True)
