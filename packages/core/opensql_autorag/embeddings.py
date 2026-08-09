@@ -3,16 +3,23 @@ from __future__ import annotations
 import hashlib
 import math
 import struct
-from typing import Protocol
+from typing import Literal, Protocol
 
 HASH_MODEL_NAME = "sha256-deterministic"
+
+# What a piece of text is being embedded as. Asymmetric models -- the e5 family
+# among them -- are trained with the two roles marked, and give a different
+# vector for the same words depending on which one is claimed. There is no
+# default: the caller always knows whether it holds a question or a document,
+# and guessing is what this parameter exists to stop.
+EmbeddingRole = Literal["query", "passage"]
 
 
 class EmbeddingProvider(Protocol):
     model_name: str
     dimension: int
 
-    def embed(self, text: str) -> list[float]:
+    def embed(self, text: str, role: EmbeddingRole) -> list[float]:
         raise NotImplementedError
 
 
@@ -23,7 +30,15 @@ class HashEmbeddingProvider:
         self.model_name = HASH_MODEL_NAME
         self.dimension = dimension
 
-    def embed(self, text: str) -> list[float]:
+    def embed(self, text: str, role: EmbeddingRole = "passage") -> list[float]:
+        """A deterministic vector, ignoring the role.
+
+        This provider exists so the platform runs with no model download, and a
+        symmetric fake is the honest stand-in: a hash carries no notion of a
+        question versus a document, and pretending otherwise would give the two
+        roles vectors that differ for no reason a search could use.
+        """
+        del role
         values: list[float] = []
         counter = 0
         while len(values) < self.dimension:
@@ -46,9 +61,16 @@ class SentenceTransformerEmbeddingProvider:
         self.model = SentenceTransformer(model_name)
         self.dimension = int(self.model.get_sentence_embedding_dimension())
 
-    def embed(self, text: str) -> list[float]:
-        prefixed = f"query: {text}" if len(text.split()) < 80 else f"passage: {text}"
-        vector = self.model.encode(prefixed, normalize_embeddings=True)
+    def embed(self, text: str, role: EmbeddingRole) -> list[float]:
+        """Encode with the role marked, which is what e5 was trained on.
+
+        The prefix comes from the caller rather than from the text, because it
+        describes what the text is for and nothing about the text reveals that.
+        Choosing it by length -- which this did -- marks a short document as a
+        query, so a corpus ends up with both prefixes mixed through it and the
+        two halves are no longer compared on the same footing.
+        """
+        vector = self.model.encode(f"{role}: {text}", normalize_embeddings=True)
         return [float(value) for value in vector]
 
 

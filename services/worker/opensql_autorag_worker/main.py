@@ -92,7 +92,8 @@ def process_next_job() -> bool:
                     )
                     reused_count += 1
                 else:
-                    embedding = provider.embed(item.chunk.text)
+                    # A chunk is indexed content, never a question.
+                    embedding = provider.embed(item.chunk.text, role="passage")
                     repo.insert_chunk_with_embedding(
                         document_id,
                         version_id,

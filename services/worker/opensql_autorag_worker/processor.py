@@ -5,7 +5,7 @@ from pathlib import Path
 from opensql_autorag.chunking import SemanticChunker
 from opensql_autorag.delta import DeltaPlanner
 from opensql_autorag.domain import Chunk, ChunkDecision
-from opensql_autorag.embeddings import EmbeddingProvider
+from opensql_autorag.embeddings import EmbeddingProvider, EmbeddingRole
 from opensql_autorag_api.embeddings import get_embedding_provider
 
 from opensql_autorag_worker.extractors import extract_blocks
@@ -17,9 +17,11 @@ class CountingEmbeddingProvider:
 
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.roles: list[str] = []
 
-    def embed(self, text: str) -> list[float]:
+    def embed(self, text: str, role: EmbeddingRole = "passage") -> list[float]:
         self.calls.append(text)
+        self.roles.append(role)
         return [0.0] * self.dimension
 
 
@@ -44,7 +46,7 @@ class IndexProcessor:
         plan = self.delta_planner.plan(previous=previous_chunks, current=chunks)
         for item in plan.chunks:
             if item.decision == ChunkDecision.EMBED:
-                self.embedding_provider.embed(item.chunk.text)
+                self.embedding_provider.embed(item.chunk.text, role="passage")
         return {
             "blocks": len(blocks),
             "chunks": len(chunks),

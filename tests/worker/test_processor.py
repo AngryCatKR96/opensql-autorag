@@ -36,3 +36,21 @@ def test_processor_embeds_only_changed_chunks(tmp_path: Path):
     assert summary["reused"] == 1
     assert summary["embedded"] == 1
     assert provider.calls == ["new content"]
+
+
+def test_chunks_are_embedded_as_passages(tmp_path: Path):
+    """Indexed content is never a question.
+
+    Worth pinning: the role used to be inferred from length, so a short document
+    was embedded as a query and compared against real queries on a different
+    footing than a long one.
+    """
+    path = tmp_path / "doc.md"
+    path.write_text("# Title\n\nfresh content that has to be embedded\n", encoding="utf-8")
+    provider = CountingEmbeddingProvider()
+    processor = IndexProcessor(embedding_provider=provider)
+
+    processor.preview_file(document_id="doc-1", path=path, previous_chunks=())
+
+    assert provider.roles, "nothing was embedded, so the role was never exercised"
+    assert set(provider.roles) == {"passage"}

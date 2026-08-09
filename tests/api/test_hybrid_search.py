@@ -243,3 +243,36 @@ def test_keyword_rank_prefers_the_chunk_with_more_of_the_terms(seeded):
 def test_keyword_arm_survives_punctuation_in_the_query(seeded):
     """Raw input reaches to_tsvector, never to_tsquery, so this cannot raise."""
     assert seeded.repository.search_chunks_keyword("what?! & | ( ) :*", 10, PLATFORM) == []
+
+
+def test_a_search_embeds_the_query_as_a_query(monkeypatch: pytest.MonkeyPatch):
+    """The other half of the pair pinned in tests/worker/test_processor.py.
+
+    Content is embedded as `passage` and a search must be embedded as `query`,
+    or the two sides of every comparison are marked differently.
+    """
+    from opensql_autorag_api import search as search_module
+
+    seen: list[str] = []
+
+    class Provider:
+        model_name = "probe"
+        dimension = DIMENSION
+
+        def embed(self, text: str, role: str) -> list[float]:
+            seen.append(role)
+            return vector(1.0)
+
+    class Repo:
+        def resolve_embedding_model_id(self, **_: object) -> int:
+            return 1
+
+        def search_chunks(self, *_: object) -> list[dict]:
+            return [{"chunk_id": "x"}]
+
+    monkeypatch.setattr(search_module.settings, "embedding_provider", "probe")
+    search_module.execute_search(
+        Repo(), Provider(), SearchScope.local_only(), {}, "a question", 5, "vector"
+    )
+
+    assert seen == ["query"]

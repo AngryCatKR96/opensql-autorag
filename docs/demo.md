@@ -61,6 +61,36 @@ settings, so one variable switches every retrieval path:
 export AUTORAG_EMBEDDING_PROVIDER=sentence-transformers
 ```
 
+Embedding runs in the process that needs it — `sentence-transformers` loads the
+model once per process and encodes locally, on Apple Silicon through MPS. No
+document text and no search query leaves the machine. Each of the API, the
+worker, and the MCP server keeps its own copy in memory.
+
+### Query and passage are not the same text
+
+e5 is asymmetric: it is trained with `query:` and `passage:` prefixes, and gives
+a different vector for the same words depending on which is claimed. `embed`
+takes the role from the caller and has no default, because nothing about a
+string reveals what it is for — the worker embeds chunks as `passage`, a search
+embeds the query as `query`.
+
+An index built before this used the text's length to choose, so any chunk under
+80 words was stored as a query. That mixes both prefixes through one corpus and
+compares the halves on different footings. **Existing indexes have to be rebuilt,
+and `--force` alone will not do it**: delta sync reuses an embedding by content
+hash, so unchanged text keeps its old vector. Drop the vectors first.
+
+```bash
+psql "$AUTORAG_DATABASE_URL" -c "DELETE FROM chunk_embeddings e USING embedding_models m
+  WHERE m.id = e.embedding_model_id AND m.provider = 'sentence-transformers';"
+.venv/bin/python -m opensql_autorag_connector.backfill --force
+```
+
+Measured on the demo corpus, the correction changed the ranking of nothing: the
+expected chunk was already first for all seven test questions, before and after.
+It matters as corpus size grows and as chunks fall on both sides of that 80-word
+line, not as a quality win to demonstrate.
+
 Vectors are stored per embedding model, and a search only compares against
 vectors from the model that is currently configured — distances between
 different models are meaningless. After switching providers the documents are

@@ -55,7 +55,7 @@ def execute_search(
         rows = repository.search_chunks_keyword(query, top_k, scope)
         return SearchOutcome(rows=rows, mode=resolved, scope=applied_scope)
 
-    query_embedding = provider.embed(query)
+    query_embedding = provider.embed(query, role="query")
     embedding_model_id = repository.resolve_embedding_model_id(
         provider=settings.embedding_provider,
         model_name=provider.model_name,
