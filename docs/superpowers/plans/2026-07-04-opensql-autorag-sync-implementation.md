@@ -1,5 +1,15 @@
 # OpenSQL AutoRAG Sync Implementation Plan
 
+> **Completed, and kept as a record.** These fifteen tasks were the original
+> build and are all done. Work since then — the Outline connector, permission
+> filtering, sign-in, hybrid retrieval, and the chunking changes — is not in
+> here, and several details below have been superseded.
+>
+> For what the system is now, read
+> `docs/superpowers/specs/2026-07-04-opensql-autorag-sync-design.md`, whose
+> section 20 lists where this plan and the built system differ. Do not follow
+> this document as instructions.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a working product demo where users upload documents, OpenSQL stores versioned pgvector embeddings, changed chunks are re-embedded selectively, and MCP clients can search the latest indexed content.
