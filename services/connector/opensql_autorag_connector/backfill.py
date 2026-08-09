@@ -143,7 +143,9 @@ def main() -> None:
         if not collection_ids:
             logger.warning(
                 "no collection filter set: every document the API key can read will be "
-                "indexed, and retrieval has no permission filter yet"
+                "indexed. Search enforces each caller's own Outline permissions, so this "
+                "is not a leak; it is a copy of that much wiki content into another "
+                "database, which is usually somebody's decision rather than a default"
             )
         counts = run_backfill(client, collection_ids, force=args.force, prune=args.prune)
 

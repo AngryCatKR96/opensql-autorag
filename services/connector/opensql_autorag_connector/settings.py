@@ -13,8 +13,9 @@ class OutlineSettings(BaseSettings):
     webhook_secret: str = ""
 
     # Comma separated collection ids. Empty means every collection the API key
-    # can read, which for an internal wiki is rarely what you want: retrieval has
-    # no permission filter yet, so anything indexed is searchable by anyone.
+    # can read. Search resolves each caller's own permissions from Outline, so a
+    # wide scope does not make anything readable that was not already; it decides
+    # how much of the wiki is copied into another database and kept in sync.
     collections: str = ""
 
     page_size: int = 50
