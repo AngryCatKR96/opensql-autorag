@@ -20,6 +20,7 @@ from opensql_autorag_api.outline_access import (
 )
 from opensql_autorag_api.repository import Repository, SearchScope
 from opensql_autorag_api.schemas import DocumentSummary, DocumentUploadResponse, SearchRequest
+from opensql_autorag_api.search import execute_search, resolve_mode
 from opensql_autorag_api.sessions import COOKIE_NAME, SessionStore
 from opensql_autorag_api.settings import settings
 
@@ -281,26 +282,29 @@ def _resolve_scope(request: Request) -> tuple[SearchScope, dict]:
 @app.post("/search")
 def search_documents(request: SearchRequest, http_request: Request) -> dict:
     scope, applied_scope = _resolve_scope(http_request)
-    provider = get_embedding_provider()
-    query_embedding = provider.embed(request.query)
+    try:
+        mode = resolve_mode(request.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     with get_connection() as connection:
-        repository = Repository(connection)
-        embedding_model_id = repository.resolve_embedding_model_id(
-            provider=settings.embedding_provider,
-            model_name=provider.model_name,
-            dimension=provider.dimension,
+        outcome = execute_search(
+            Repository(connection),
+            get_embedding_provider(),
+            scope,
+            applied_scope,
+            request.query,
+            request.top_k,
+            mode,
         )
-        rows = repository.search_chunks(query_embedding, request.top_k, embedding_model_id, scope)
-        # Only worth resolving when there is nothing to show: an empty result is
-        # the one case a caller cannot tell apart from a misconfiguration.
-        warning = embedding_mismatch(repository, embedding_model_id) if not rows else None
-    if warning:
-        logger.error("embedding configuration: %s", warning)
+    if outcome.warning:
+        logger.error("embedding configuration: %s", outcome.warning)
     return {
         "query": request.query,
         "top_k": request.top_k,
-        "embedding_model": f"{settings.embedding_provider}/{provider.model_name}",
-        "scope": applied_scope,
-        "results": rows,
-        "warning": warning,
+        "mode": outcome.mode,
+        "embedding_model": outcome.embedding_model,
+        "scope": outcome.scope,
+        "results": outcome.rows,
+        "warning": outcome.warning,
     }

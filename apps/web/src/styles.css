@@ -191,9 +191,40 @@ button:hover,
 
 .resultMeta {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   color: #334155;
+}
+
+/* Which retrieval arm returned a result. The heading path keeps the right edge,
+   so the badges sit next to the score and the gap absorbs the difference. */
+.resultMeta span {
+  margin-left: auto;
+  text-align: right;
+}
+
+.arm {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.arm-vector {
+  color: #3730a3;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.arm-keyword {
+  color: #9a3412;
+  background: #fff7ed;
+  border-color: #fed7aa;
 }
 
 .resultMeta span,

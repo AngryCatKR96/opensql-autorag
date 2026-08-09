@@ -71,6 +71,52 @@ re-embedded on their next indexing job, since there is nothing to reuse.
 Use the hash provider for the demo run-through and the real model when search
 quality is being shown.
 
+A search whose configured model has nothing indexed under it returns an empty
+list and says so, both in the API response and in the MCP tool result. That case
+looks identical to a query with no matches otherwise, and it is the one a
+misconfigured process actually produces.
+
+## Search modes
+
+Retrieval has two arms. The vector arm answers what a passage is about; the
+keyword arm answers whether it contains the words asked for. Identifiers, error
+strings, and product names are what separate them — an embedding blurs
+`ERR_HNSW_2481` into whatever it resembles, and a reader searching a wiki for it
+means it literally.
+
+```bash
+curl -s localhost:8000/search -H 'Content-Type: application/json' \
+  -d '{"query": "ERR_HNSW_2481 index scan stops early", "top_k": 3, "mode": "hybrid"}'
+```
+
+| `mode` | What runs |
+|--------|-----------|
+| `hybrid` (default) | Both arms, fused by reciprocal rank |
+| `vector` | Nearest neighbours only |
+| `keyword` | Full text only — needs no embedding model, so it answers even when none is loaded |
+
+`AUTORAG_SEARCH_MODE` sets the default; a request overrides it. Under `hybrid`
+each result carries `matched_by`, `vector_score`, and `keyword_score`, so it is
+visible which arm found it, and the console badges them.
+
+Fusion is on rank rather than score because the arms are not on a comparable
+scale: cosine similarity sits near 1 for anything topical, while `ts_rank_cd` is
+unbounded. Reciprocal rank fusion needs no calibration and none that changes per
+corpus, at the cost of `score` no longer being a similarity — the per-arm scores
+are there for that.
+
+The keyword arm combines terms with OR. `websearch_to_tsquery` and
+`plainto_tsquery` both require every term, which for a conversational query means
+one absent word discards the whole match, and the arm meant to carry the
+identifier contributes nothing. `ts_rank_cd` discriminates instead. The cost is
+that quoted phrases and `-exclusion` are not honoured.
+
+`AUTORAG_TEXT_SEARCH_CONFIG` selects the text search configuration, default
+`english`: it stems English and leaves other scripts as whole tokens, which is
+what a mixed English and Korean wiki needs. It must match the configuration the
+index in `infra/db/init.sql` was built with; changing one means rebuilding the
+other.
+
 ## Demo Flow
 
 1. Open the web console.

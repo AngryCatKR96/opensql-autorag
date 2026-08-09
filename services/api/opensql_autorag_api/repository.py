@@ -7,6 +7,8 @@ from uuid import UUID, uuid4
 from opensql_autorag.domain import Chunk
 from psycopg import Connection
 
+from opensql_autorag_api.settings import settings
+
 
 def _vector_literal(embedding: list[float]) -> str:
     return "[" + ",".join(f"{value:.8f}" for value in embedding) + "]"
@@ -441,6 +443,107 @@ class Repository:
                 ),
             )
             return list(cursor.fetchall())
+
+    def search_chunks_keyword(self, query: str, top_k: int, scope: SearchScope) -> list[dict]:
+        """Highest ranked active chunks matching the query as text.
+
+        The vector arm answers what a passage is about; this one answers whether
+        it contains the words asked for. That is what carries an identifier, an
+        error string, or a product name -- tokens an embedding blurs into
+        whatever it resembles, and which a reader searching a wiki usually means
+        literally.
+
+        The terms are combined with OR rather than AND. `websearch_to_tsquery`
+        and `plainto_tsquery` both require every term to appear, which for the
+        conversational queries retrieval actually receives means one absent word
+        discards the whole match: "ERR_HNSW_2481 index scan stops early" finds
+        nothing in a chunk that contains the identifier and every word but
+        "early". That leaves this arm contributing nothing precisely when it was
+        supposed to carry the identifier.
+
+        With OR, `ts_rank_cd` does the discriminating instead -- it rises with
+        how many of the terms a chunk contains and how close together they are,
+        so a chunk holding the rare identifier still outranks one holding only
+        "index". The cost is that quoted phrases and `-exclusion` are not
+        honoured here; the lexemes come from `to_tsvector`, so this never fails
+        on punctuation the way `to_tsquery` does on raw input.
+        """
+        config = settings.text_search_config
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                WITH parsed AS (
+                    SELECT string_agg(lexeme, ' | ')::tsquery AS query
+                    FROM unnest(to_tsvector('{config}', %s))
+                )
+                SELECT c.id AS chunk_id, c.document_id, c.version_id, c.text,
+                       c.heading_path, c.page_start, c.page_end,
+                       d.title AS document_title,
+                       s.source_system, s.external_url AS source_url,
+                       s.external_updated_at AS source_updated_at,
+                       s.collection_id AS source_collection_id,
+                       ts_rank_cd(to_tsvector('{config}', c.text), parsed.query) AS score
+                FROM document_chunks c
+                JOIN documents d ON d.id = c.document_id
+                LEFT JOIN document_sources s ON s.document_id = c.document_id
+                CROSS JOIN parsed
+                WHERE c.active = TRUE
+                  AND to_tsvector('{config}', c.text) @@ parsed.query
+                  AND (
+                        (s.document_id IS NULL AND %s)
+                     OR s.collection_id = ANY(%s::text[])
+                  )
+                ORDER BY score DESC
+                LIMIT %s
+                """,  # noqa: S608 - config is a server-side setting, never caller input
+                (
+                    query,
+                    scope.include_local_documents,
+                    list(scope.allowed_collection_ids),
+                    top_k,
+                ),
+            )
+            return list(cursor.fetchall())
+
+    def search_chunks_hybrid(
+        self,
+        query: str,
+        query_embedding: list[float],
+        top_k: int,
+        embedding_model_id: int,
+        scope: SearchScope,
+    ) -> list[dict]:
+        """Both arms, fused by reciprocal rank.
+
+        Fusion is on rank rather than on score because the two arms are not on a
+        comparable scale: cosine similarity sits near 1 for anything topical,
+        while `ts_rank_cd` is unbounded and depends on term frequency. Normalising
+        them against each other would need a calibration that changes with every
+        corpus. Rank does not: a chunk placed first by either arm contributes the
+        same amount whatever its raw score was.
+
+        Each arm is asked for more than `top_k`, because fusion can only rank the
+        candidates it is given -- a document ranked 6th by both arms should beat
+        one ranked 1st by neither, and it cannot if the pool stops at 5.
+        """
+        candidates = max(
+            top_k * settings.search_candidate_multiplier,
+            settings.search_candidate_minimum,
+        )
+        vector_rows = self.search_chunks(query_embedding, candidates, embedding_model_id, scope)
+        keyword_rows = self.search_chunks_keyword(query, candidates, scope)
+
+        blank = {"score": 0.0, "vector_score": None, "keyword_score": None, "matched_by": []}
+        fused: dict[UUID, dict] = {}
+        for rows, arm in ((vector_rows, "vector"), (keyword_rows, "keyword")):
+            for rank, row in enumerate(rows, start=1):
+                entry = fused.setdefault(row["chunk_id"], {**row, **blank, "matched_by": []})
+                entry["score"] += 1.0 / (settings.rrf_k + rank)
+                entry[f"{arm}_score"] = float(row["score"])
+                entry["matched_by"].append(arm)
+
+        ordered = sorted(fused.values(), key=lambda row: row["score"], reverse=True)
+        return ordered[:top_k]
 
     def deactivate_document(self, document_id: UUID) -> int:
         """Retire a document: its chunks stop being searchable.

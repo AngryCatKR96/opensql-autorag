@@ -77,6 +77,15 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     UNIQUE (version_id, stable_key)
 );
 
+-- The keyword arm of retrieval. An expression index rather than a stored
+-- tsvector column, so adding it to a populated database does not rewrite the
+-- table. The configuration is fixed here because an index and the query using it
+-- must agree on one: `english` stems English and leaves other scripts as whole
+-- tokens, which is what a mixed English and Korean wiki needs. Changing
+-- AUTORAG_TEXT_SEARCH_CONFIG means rebuilding this index to match.
+CREATE INDEX IF NOT EXISTS document_chunks_text_idx
+    ON document_chunks USING gin (to_tsvector('english', text));
+
 CREATE TABLE IF NOT EXISTS chunk_embeddings (
     chunk_id UUID PRIMARY KEY REFERENCES document_chunks(id),
     embedding_model_id BIGINT NOT NULL REFERENCES embedding_models(id),

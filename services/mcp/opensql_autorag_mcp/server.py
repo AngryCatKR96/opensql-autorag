@@ -6,9 +6,10 @@ from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
 from opensql_autorag_api.db import get_connection
-from opensql_autorag_api.embeddings import embedding_mismatch, get_embedding_provider
+from opensql_autorag_api.embeddings import get_embedding_provider
 from opensql_autorag_api.outline_access import resolver
 from opensql_autorag_api.repository import Repository, SearchScope
+from opensql_autorag_api.search import execute_search
 from opensql_autorag_api.settings import settings
 
 TOOL_NAMES = {
@@ -55,29 +56,35 @@ def _scope() -> tuple[SearchScope, dict]:
 
 
 @mcp.tool()
-def search_documents(query: str, top_k: int = 5) -> dict:
+def search_documents(query: str, top_k: int = 5, mode: str | None = None) -> dict:
+    """Search the indexed documents.
+
+    `mode` is `hybrid` (the default: meaning and wording together), `vector`
+    for meaning alone, or `keyword` for literal wording -- useful when the query
+    is an identifier, an error string, or a name that must match exactly.
+    """
     scope, applied_scope = _scope()
-    provider = get_embedding_provider()
-    query_embedding = provider.embed(query)
     with get_connection() as connection:
-        repository = Repository(connection)
-        embedding_model_id = repository.resolve_embedding_model_id(
-            provider=settings.embedding_provider,
-            model_name=provider.model_name,
-            dimension=provider.dimension,
+        outcome = execute_search(
+            Repository(connection),
+            get_embedding_provider(),
+            scope,
+            applied_scope,
+            query,
+            top_k,
+            mode,
         )
-        results = repository.search_chunks(query_embedding, top_k, embedding_model_id, scope)
-        # An agent cannot read a server log. If the answer is empty because this
-        # process is pointed at a model nothing was indexed with, that has to
-        # travel back in the tool result or it is invisible.
-        warning = embedding_mismatch(repository, embedding_model_id) if not results else None
     return {
         "query": query,
         "top_k": top_k,
-        "embedding_model": f"{settings.embedding_provider}/{provider.model_name}",
-        "scope": applied_scope,
-        "results": _rows(results),
-        "warning": warning,
+        "mode": outcome.mode,
+        "embedding_model": outcome.embedding_model,
+        "scope": outcome.scope,
+        "results": _rows(outcome.rows),
+        # An agent cannot read a server log. If the answer is empty because this
+        # process is pointed at a model nothing was indexed with, that has to
+        # travel back in the tool result or it is invisible.
+        "warning": outcome.warning,
     }
 
 

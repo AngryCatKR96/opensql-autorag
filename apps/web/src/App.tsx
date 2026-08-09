@@ -44,6 +44,11 @@ type SearchResult = {
   document_title: string;
   source_system: string | null;
   source_url: string | null;
+  // Which retrieval arms returned this chunk, and what each one scored. Empty
+  // and null outside hybrid mode, where there is only one arm to report.
+  matched_by: string[];
+  vector_score: number | null;
+  keyword_score: number | null;
 };
 
 export function App() {
@@ -243,6 +248,18 @@ export function App() {
                 <article className="result" key={result.chunk_id}>
                   <div className="resultMeta">
                     <strong>{Number(result.score).toFixed(3)}</strong>
+                    {/* Which arm found it. A chunk both arms agree on means the
+                        wording and the meaning both matched, which is the case
+                        hybrid retrieval exists to promote. */}
+                    {(result.matched_by ?? []).map((arm) => (
+                      <em className={`arm arm-${arm}`} key={arm} title={
+                        arm === "vector"
+                          ? `similarity ${Number(result.vector_score).toFixed(3)}`
+                          : `keyword rank ${Number(result.keyword_score).toFixed(4)}`
+                      }>
+                        {arm}
+                      </em>
+                    ))}
                     <span>{result.heading_path || "Document"}</span>
                   </div>
                   <p>{result.text}</p>
