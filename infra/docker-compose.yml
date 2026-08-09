@@ -1,5 +1,12 @@
 services:
   # Stand-in PostgreSQL for local development and CI.
+  #
+  # 5432 is the port another PostgreSQL on the machine is most likely to already
+  # hold, and the failure is the first command in docs/demo.md refusing to start.
+  # AUTORAG_DB_PORT moves it without touching anything else:
+  #
+  #   AUTORAG_DB_PORT=5442 docker compose -f infra/docker-compose.yml up -d db
+  #   export AUTORAG_DATABASE_URL=postgresql://autorag:autorag@127.0.0.1:5442/autorag
   db:
     image: pgvector/pgvector:pg16
     environment:
@@ -7,7 +14,7 @@ services:
       POSTGRES_USER: autorag
       POSTGRES_PASSWORD: autorag
     ports:
-      - "5432:5432"
+      - "${AUTORAG_DB_PORT:-5432}:5432"
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
       - opensql_autorag_data:/var/lib/postgresql/data

@@ -9,6 +9,18 @@ PYTHONPATH=packages/core:services/api:services/worker .venv/bin/python -m opensq
 npm run dev:web
 ```
 
+If the first command fails with `Bind for 0.0.0.0:5432 failed: port is already
+allocated`, another PostgreSQL on the machine holds the port. Move this one
+rather than stopping that one:
+
+```bash
+AUTORAG_DB_PORT=5442 docker compose -f infra/docker-compose.yml up -d
+export AUTORAG_DATABASE_URL=postgresql://autorag:autorag@127.0.0.1:5442/autorag
+```
+
+The API, the worker, the MCP server, and the connector all read
+`AUTORAG_DATABASE_URL`, so exporting it once covers every process.
+
 ## Real OpenSQL
 
 The `db` service above is a stand-in for local development. To run the same
