@@ -26,12 +26,24 @@ class SemanticChunker:
                 continue
             if buffer_location is None:
                 buffer_location = block.location
+            section_changed = block.location.heading_path != buffer_location.heading_path
             if buffer_words and (
-                len(buffer_words) + len(words) > self.target_tokens
-                or block.location.heading_path != buffer_location.heading_path
+                section_changed or len(buffer_words) + len(words) > self.target_tokens
             ):
                 self._flush(document_id, chunks, buffer_words, buffer_location)
-                buffer_words = buffer_words[-self.overlap_tokens :] if self.overlap_tokens else []
+                # Overlap carries context across a split made inside one
+                # section. Across a section boundary there is no context to
+                # carry: the new chunk would open with the previous section's
+                # words while its heading path claims the new section, and an
+                # edit to one section would then invalidate the next section's
+                # chunk as well.
+                buffer_words = (
+                    []
+                    if section_changed
+                    else buffer_words[-self.overlap_tokens :]
+                    if self.overlap_tokens
+                    else []
+                )
                 buffer_location = block.location
             buffer_words.extend(words)
 

@@ -20,6 +20,28 @@ def test_chunker_preserves_heading_path_and_source_location():
     assert "pgvector" in chunks[0].text
 
 
+def test_chunker_does_not_carry_overlap_across_a_section_boundary():
+    """A chunk must not open with words belonging to the previous heading.
+
+    The overlap exists to keep context across a split inside one section. Carried
+    across a boundary it mislabels the text — the chunk's heading path would name
+    the new section while its first words come from the old one — and it couples
+    the two sections, so editing one re-embeds both.
+    """
+    blocks = [
+        TextBlock("alpha beta gamma delta", SourceLocation(heading_path=("Doc", "First")), 0),
+        TextBlock("epsilon zeta", SourceLocation(heading_path=("Doc", "Second")), 1),
+    ]
+
+    chunks = SemanticChunker(target_tokens=20, overlap_tokens=3).chunk("doc-1", blocks)
+
+    assert [chunk.location.heading_path for chunk in chunks] == [
+        ("Doc", "First"),
+        ("Doc", "Second"),
+    ]
+    assert chunks[1].text == "epsilon zeta"
+
+
 def test_chunker_splits_large_sections_deterministically():
     text = " ".join(f"token{i}" for i in range(45))
     blocks = [TextBlock(text, SourceLocation(2, 2, ("Long",)), 0)]
