@@ -1,339 +1,685 @@
+/* OpenSQL AutoRAG console.
+
+   Two rules hold this interface together.
+
+   Hue means provenance. The console is ink on paper, and the only two colours
+   in it — indigo and amber — never appear except to say which retrieval arm
+   found a passage. Nothing else is allowed to be coloured, so when something
+   is, it is worth reading.
+
+   Mono means a machine produced the value. Scores, chunk counts, version ids,
+   page numbers, arm names and the query itself are set in mono; prose a person
+   wrote is set in sans. The two faces are a legend, not a texture. */
+
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #172033;
-  background: #f4f7fb;
+  --ink: #0a1017;
+  --ink-raise: #16202d;
+  --ink-line: #26313f;
+
+  --paper: #e9edf2;
+  --surface: #ffffff;
+  --line: #d9e0e9;
+  --line-soft: #eaeff4;
+  --mute: #66748a;
+  --mute-dim: #93a1b3;
+
+  --vector: #4338ca;
+  --vector-soft: #eeefff;
+  --vector-line: #ccccf6;
+
+  --keyword: #a1500a;
+  --keyword-soft: #fff4e3;
+  --keyword-line: #f3d3a4;
+
+  --alert: #9f1239;
+  --alert-soft: #fff1f4;
+  --alert-line: #fbcfda;
+
+  /* Plex is the intended pairing and is picked up if the self-hosted
+     @fontsource packages are ever installed. Nothing is fetched at runtime —
+     a console that promises no document ever leaves the host should not be
+     calling a font CDN — so until then this resolves to the system faces,
+     which keep the sans/mono distinction the legend depends on. */
+  --sans: "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    monospace;
+
+  --radius: 10px;
+  --radius-sm: 7px;
+  --control: 40px;
+  --lift: 0 1px 2px rgba(10, 16, 23, 0.04), 0 10px 28px -14px rgba(10, 16, 23, 0.22);
+
+  font-family: var(--sans);
+  color: var(--ink);
+  background: var(--paper);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  /* The console's controls are a mix of buttons and file-input labels. Buttons
+     are border-box by user-agent default and labels are not, which is exactly
+     how two controls given the same width and padding end up different sizes. */
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
 }
 
-button,
-.uploadButton,
-.versionButton {
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #172033;
-  border-radius: 8px;
-  padding: 10px 12px;
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Machine-produced values. */
+.mono,
+.score,
+.tick,
+.count,
+.docMeta,
+.eyebrow,
+.searchbar input,
+.source {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Controls ─────────────────────────────────────────────────────────── */
+
+.btn {
+  height: var(--control);
+  padding: 0 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
   font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
 
-button:hover,
-.uploadButton:hover {
-  border-color: #64748b;
+.btn:hover {
+  border-color: var(--mute-dim);
+  background: #fbfcfe;
 }
 
-.uploadButton input {
-  display: none;
+.btn:active {
+  transform: translateY(1px);
 }
 
-.versionButton input {
-  display: none;
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
 }
+
+/* Ink is the console's one loud surface, so it marks the primary action and
+   nothing else. */
+.btn-primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.btn-primary:hover {
+  border-color: var(--ink-raise);
+  background: var(--ink-raise);
+}
+
+/* A file input has to stay focusable to stay reachable from the keyboard, so
+   it is hidden by size rather than by display, and its label wears the ring. */
+.btn input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.btn:has(input:focus-visible) {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* ── Shell ────────────────────────────────────────────────────────────── */
 
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 264px minmax(0, 1fr);
 }
 
-.sidebar {
-  background: #102033;
-  color: #ffffff;
-  padding: 24px;
+.rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  padding: 26px 22px;
+  background: var(--ink);
+  color: #f2f5f9;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.sidebar button,
-.sidebar .uploadButton {
-  width: 100%;
+  gap: 10px;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 22px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.workspace {
-  padding: 32px;
+.brand svg {
+  color: var(--mute-dim);
 }
 
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  align-items: flex-start;
-}
-
-.topbar h1 {
-  margin: 0 0 8px;
-  font-size: 30px;
-}
-
-.topbar p,
-.muted {
-  color: #64748b;
-}
-
-.stat {
-  min-width: 120px;
-  background: #ffffff;
-  border: 1px solid #dbe3ef;
-  border-radius: 8px;
-  padding: 14px;
-  display: grid;
-  gap: 4px;
-  text-align: right;
-}
-
-.stat strong {
-  font-size: 28px;
-}
-
-.stat span {
-  color: #64748b;
-  font-size: 13px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.4fr);
-  gap: 20px;
-  margin-top: 24px;
-}
-
-.panel {
-  background: #ffffff;
-  border: 1px solid #dbe3ef;
-  border-radius: 8px;
-  padding: 20px;
-  min-width: 0;
-}
-
-.panel h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 16px;
-  font-size: 18px;
-}
-
-.tableHeader,
-.tableRow {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) 70px 70px 72px;
-  gap: 12px;
-  align-items: center;
-}
-
-.tableHeader {
-  color: #64748b;
-  font-size: 12px;
+.railLabel {
+  margin: 0 0 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding-bottom: 8px;
+  color: #7a8ba0;
 }
 
-.tableRow,
-.result {
-  border-top: 1px solid #e2e8f0;
-  padding: 14px 0;
+.rail .btn {
+  width: 100%;
+  justify-content: flex-start;
 }
 
-.tableRow strong,
-.tableRow span {
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* Ink on ink is invisible, so on the rail the two roles swap: the primary
+   control is the paper one and the quiet one is a hairline. */
+.rail .btn-primary {
+  border-color: var(--surface);
+  background: var(--surface);
+  color: var(--ink);
 }
 
-.versionButton {
-  padding: 7px 8px;
-  font-size: 13px;
+.rail .btn-primary:hover {
+  border-color: #dfe6ee;
+  background: #dfe6ee;
 }
 
-.searchbar {
-  display: grid;
-  grid-template-columns: 1fr auto;
+.rail .btn-ghost {
+  border-color: var(--ink-line);
+  background: transparent;
+  color: #dbe3ec;
+}
+
+.rail .btn-ghost:hover {
+  border-color: #46566a;
+  background: var(--ink-raise);
+}
+
+.identity {
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
-.searchbar input {
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 10px 12px;
-  font: inherit;
-  min-width: 0;
-}
-
-.results {
-  margin-top: 12px;
-}
-
-.result {
-  display: grid;
-  gap: 8px;
-}
-
-.result p {
+.signedIn {
   margin: 0;
-  line-height: 1.45;
-}
-
-.resultMeta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: #334155;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--ink-raise);
+  font-size: 13px;
+  font-weight: 500;
 }
 
-/* Which retrieval arm returned a result. The heading path keeps the right edge,
-   so the badges sit next to the score and the gap absorbs the difference. */
-.resultMeta span {
-  margin-left: auto;
-  text-align: right;
-}
-
-.arm {
-  font-style: normal;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid transparent;
+.signedIn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.arm-vector {
-  color: #3730a3;
-  background: #eef2ff;
-  border-color: #c7d2fe;
+.signedIn svg {
+  flex-shrink: 0;
+  color: var(--mute-dim);
 }
 
-.arm-keyword {
-  color: #9a3412;
-  background: #fff7ed;
-  border-color: #fed7aa;
+.identity small {
+  color: #8fa0b4;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-.resultMeta span,
-.source {
-  color: #64748b;
+/* ── Workspace ────────────────────────────────────────────────────────── */
+
+.workspace {
+  min-width: 0;
+  padding: 34px 36px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.masthead h1 {
+  margin: 0 0 6px;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--mute);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+/* The query is the whole point of the console, so it gets the hero slot and
+   the largest interactive surface on the page. */
+.searchbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--lift);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.searchbar:focus-within {
+  border-color: var(--ink);
+  box-shadow: var(--lift), 0 0 0 3px rgba(10, 16, 23, 0.07);
+}
+
+.searchbar svg {
+  color: var(--mute-dim);
+}
+
+.searchbar input {
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.searchbar input:focus {
+  outline: none;
+}
+
+.searchbar input::placeholder {
+  color: var(--mute-dim);
+}
+
+.searchbar .btn {
+  min-width: 112px;
+}
+
+/* ── Messages ─────────────────────────────────────────────────────────── */
+
+.notice,
+.scope {
+  margin: 0;
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
+  line-height: 1.5;
+}
+
+.notice {
+  border: 1px solid var(--alert-line);
+  background: var(--alert-soft);
+  color: var(--alert);
+}
+
+/* Scope is a statement of fact about the query that ran, so it reads as a
+   readout rather than as an alert. */
+.scope {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* ── Panels ───────────────────────────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.85fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.panel {
+  min-width: 0;
+  padding: 20px 22px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--lift);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.panelHead h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.panelHead svg {
+  color: var(--mute-dim);
+}
+
+.count {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--mute);
+  font-size: 11px;
+}
+
+.empty {
+  margin: 0;
+  padding: 22px 0 6px;
+  color: var(--mute);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* ── Documents ────────────────────────────────────────────────────────── */
+
+.doc {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.doc strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.docMeta {
+  margin: 5px 0 0;
+  color: var(--mute);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.retired {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-style: normal;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.iconBtn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Results, and the provenance rail ─────────────────────────────────── */
+
+.result {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 20px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .result {
+    animation: rise 320ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+}
+
+.provenance {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.score {
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+/* The fused score read against the strongest hit in this result set — an
+   absolute reciprocal-rank number means nothing on its own. */
+.scoreBar {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.scoreBar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ink);
+}
+
+/* Which arms fired. Reading down the column shows where meaning and wording
+   agreed, which is the whole argument for fusing them. */
+.arms {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 1px;
+}
+
+.tick {
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.tick-vector {
+  border-color: var(--vector-line);
+  background: var(--vector-soft);
+  color: var(--vector);
+}
+
+.tick-keyword {
+  border-color: var(--keyword-line);
+  background: var(--keyword-soft);
+  color: var(--keyword);
+}
+
+.tick-off {
+  border-color: var(--line-soft);
+  background: none;
+  color: #b8c3cf;
+}
+
+.crumb {
+  margin: 0 0 7px;
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+/* Named rather than selected as `.result p`, which would outrank .crumb on
+   specificity and quietly reset the heading path to body size. */
+.passage {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.62;
+}
+
+/* A chunk is a whole section, and a few of them at full length bury the rest
+   of the ranking. Long ones open on request. */
+.passage-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 7;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.moreBtn {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.moreBtn:hover {
+  color: var(--ink);
+}
+
+.source {
+  display: block;
+  margin-top: 9px;
+  color: var(--mute);
+  font-size: 11.5px;
   overflow-wrap: anywhere;
 }
 
 .source a {
-  color: #1d4ed8;
-  text-decoration: none;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--mute-dim);
+  text-underline-offset: 3px;
 }
 
 .source a:hover {
-  text-decoration: underline;
+  text-decoration-color: var(--ink);
 }
 
-.identity {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
+/* ── Narrow ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-.signedIn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #ffffff;
-  background: #1e3a5f;
-  border-radius: 8px;
-  padding: 9px 10px;
-}
-
-.signInButton {
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #172033;
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-decoration: none;
-  font: inherit;
-}
-
-.signInButton:hover {
-  border-color: #64748b;
-}
-
-.identity small {
-  color: #94a3b8;
-  line-height: 1.45;
-}
-
-.notice,
-.scope {
-  margin: 0 0 4px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
-.notice {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
-}
-
-.scope {
-  background: #eef2ff;
-  border: 1px solid #c7d2fe;
-  color: #3730a3;
-}
-
-.retired {
-  margin-left: 8px;
-  font-size: 12px;
-  font-style: normal;
-  color: #92400e;
-  background: #fef3c7;
-  border-radius: 6px;
-  padding: 2px 6px;
-}
-
-@media (max-width: 840px) {
+@media (max-width: 860px) {
   .shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
+  .rail {
+    position: static;
+    height: auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .brand,
+  .railLabel,
   .identity {
     grid-column: 1 / -1;
   }
 
-  .sidebar {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .brand {
+    margin-bottom: 0;
   }
 
-  .brand {
+  .identity {
+    margin-top: 4px;
+  }
+
+  .workspace {
+    padding: 24px 18px 40px;
+  }
+
+  .searchbar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .searchbar .btn {
     grid-column: 1 / -1;
   }
+}
 
-  .grid,
-  .topbar {
-    grid-template-columns: 1fr;
-    display: grid;
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
   }
 }
