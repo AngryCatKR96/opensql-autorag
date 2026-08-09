@@ -175,6 +175,23 @@ export AUTORAG_PUBLIC_BASE_URL=https://autorag.internal.example.com/api
 # redirect URI to register: https://autorag.internal.example.com/api/auth/outline/callback
 ```
 
+In development the console is its own origin on the Vite port, so the same rule
+means the Vite port and not the API port. Leaving this at the default sends the
+caller to the API's own root after signing in — the browser lands on a blank
+page, still signed in but no longer on the console:
+
+```bash
+export AUTORAG_PUBLIC_BASE_URL=http://localhost:5173/api
+# redirect URI to register: http://localhost:5173/api/auth/outline/callback
+```
+
+Use `localhost` throughout rather than mixing it with `127.0.0.1`. The session
+cookie is set by the callback and belongs to whichever of the two names was used
+there; cookies ignore the port, so `localhost:5173` and `localhost:8000` share
+one, but `127.0.0.1:5173` does not see it. Vite prints whichever host it bound
+and picks the next free port when 5173 is taken, so check the port it reports
+before registering the redirect URI.
+
 **2. Configure it.**
 
 | Variable | Meaning |
@@ -232,7 +249,16 @@ not evidence that anything is gone. `--no-prune` turns it off.
 ```
 
 Register `https://<host>:8200/outline/webhook` under Settings → Webhooks in
-Outline and subscribe to the document events. Requests are authenticated with
+Outline and subscribe to the document events.
+
+Subscribe with the event name `documents` — the bare prefix. Outline matches a
+subscription against an event with `e === name || name.startsWith(e + ".")`
+(`matchEvent`, `server/models/WebhookSubscription.ts`), so `documents` covers
+every `documents.*` event and `*` covers everything. `documents.*` written
+literally matches nothing at all, and nothing reports that: the subscription
+saves, stays enabled, and is simply never delivered to.
+
+Requests are authenticated with
 the `Outline-Signature` header: HMAC-SHA256 over `{timestamp}.{raw body}`, and an
 unsigned or tampered request is rejected with 401.
 
@@ -252,6 +278,12 @@ Events are routed by the list in `DocumentEvent`, `server/types.ts`:
 | `delete`, `permanent_delete`, `archive`, `unpublish` | The document is retired. `unpublish` belongs here because it turns the document back into a draft, which only its author may read |
 | `restore`, `unarchive`, `publish`, `move`, `update`, anything else under `documents.` | The document is re-fetched and re-indexed |
 | `empty_trash` | Ignored; it carries no document id, and each document raised `delete` on its way into the trash |
+
+Every row above has been fired against a real instance and checked in the
+database. Two names in Outline's API do not match the event they raise:
+unarchiving is `documents.restore`, not `documents.unarchive`, which does not
+exist; and `documents.permanent_delete` is only an event — the call is
+`documents.delete` with `permanent: true`.
 
 A retired document keeps its chunks and versions — the page may come back, and its
 stored embeddings are then reused — but none of them are active. Retirement is
@@ -335,6 +367,12 @@ from it.
 - **`AUTORAG_SESSION_SECRET` is only as protected as its environment.** The tokens
   in `oauth_sessions` are encrypted with a key derived from it, which defends a
   database dump, not a host where the process environment can be read.
+- **A delete that was missed is not recovered by emptying the trash.**
+  `empty_trash` carries no document ids, so a document whose `delete` delivery
+  failed is permanently gone from Outline while still searchable here, with no
+  further event coming. The scheduled backfill's prune is what retires it;
+  until then the window is however long that interval is. Confirmed against a
+  real instance rather than reasoned about.
 - **Archived collections are unreachable.** `collections.list` omits them, so
   documents synced from a collection that was later archived stay indexed but
   match nobody's scope.

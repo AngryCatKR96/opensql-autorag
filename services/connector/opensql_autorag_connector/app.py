@@ -25,8 +25,14 @@ REMOVAL_EVENTS = {
     "documents.unpublish",
 }
 
-# Carries no document id: it fires once for the whole trash, whose documents each
-# raised documents.delete when they went in.
+# Carries no document id: it fires once for the whole trash, and the documents in
+# it each raised documents.delete on the way in. Ignoring it is therefore right
+# only for the deliveries that arrived -- a document whose delete was missed is
+# now permanently gone from Outline with no further event coming, and stays
+# searchable here until the next backfill prunes it. Verified against a real
+# instance: with deliveries failing over a delete, empty_trash leaves the
+# document live. Acting on it would mean listing the whole wiki from a webhook,
+# which is what the scheduled backfill already does; see `_prune` in backfill.py.
 EMPTY_TRASH_EVENT = "documents.empty_trash"
 
 
