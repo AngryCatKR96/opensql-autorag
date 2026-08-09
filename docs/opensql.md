@@ -85,6 +85,33 @@ docker compose -f infra/docker-compose.yml logs opensql | head -20
 When the license expires, replace `infra/opensql/licenses/license.xml` and
 restart the container; no rebuild is needed.
 
+## Vector index settings
+
+An HNSW scan visits a bounded pool of candidates, and this platform filters those
+candidates by the collections a caller may read in Outline. On a wiki where one
+person can read a small part of what is indexed, enough of the pool can be
+filtered away that a query returns fewer than `top_k` results while matching
+documents were never visited. It fails quietly: a short result list is
+indistinguishable from a narrow query.
+
+pgvector 0.8 added iterative scans for exactly this, and they are off by default.
+Every connection this platform opens turns one on:
+
+```
+hnsw.iterative_scan = strict_order   # AUTORAG_HNSW_ITERATIVE_SCAN
+hnsw.max_scan_tuples                 # AUTORAG_HNSW_MAX_SCAN_TUPLES, 0 leaves pgvector's default
+```
+
+`strict_order` keeps results in true distance order; `relaxed_order` is faster
+and may return them slightly out of order. Setting the variable to an empty
+string leaves the server's own configuration alone, and a pgvector older than 0.8
+logs one warning and carries on without it.
+
+This only matters once the index is large enough for the planner to choose it. On
+a demo-sized corpus a sequential scan is cheaper, so the plan is an exact
+brute-force nearest neighbour search and the setting has nothing to do — which is
+also why this problem never appears in a demo.
+
 ## High availability
 
 `docs/demo.md` positions OpenSQL as the metadata and vector store, and in a

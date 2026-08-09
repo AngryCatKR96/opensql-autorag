@@ -14,6 +14,35 @@ class Settings(BaseSettings):
     embedding_model: str = "intfloat/multilingual-e5-small"
     embedding_dimension: int = 384
 
+    # How a search combines the two retrieval arms. `hybrid` fuses vector and
+    # keyword results, `vector` and `keyword` use one arm alone. A request may
+    # override it per query.
+    search_mode: str = "hybrid"
+
+    # The text search configuration used for the keyword arm. `english` stems
+    # English and leaves other scripts as whole tokens, which is what a mixed
+    # English and Korean wiki needs; `simple` disables stemming entirely.
+    text_search_config: str = "english"
+
+    # How many candidates each arm contributes before fusion. Fusion can only
+    # rank what it is given, so this is deliberately wider than top_k.
+    search_candidate_multiplier: int = 4
+    search_candidate_minimum: int = 20
+
+    # Reciprocal rank fusion's damping constant. 60 is the value from the paper
+    # the method comes from and behaves well without tuning.
+    rrf_k: int = 60
+
+    # pgvector's HNSW index returns a fixed candidate pool, and this platform
+    # filters those candidates by what the caller may read. Enough of them can be
+    # filtered out that a query returns fewer than top_k while matching documents
+    # remain unvisited. Iterative scan resumes the search instead of stopping;
+    # `strict_order` keeps results in true distance order. Set to an empty string
+    # to leave the server's own setting alone.
+    hnsw_iterative_scan: str = "strict_order"
+    # 0 leaves pgvector's own default in place.
+    hnsw_max_scan_tuples: int = 0
+
     # Search honours the permissions of the wiki a document was synced from, by
     # asking Outline what the caller can read. The same instance the connector
     # syncs from, so these share AUTORAG_OUTLINE_* with it.
