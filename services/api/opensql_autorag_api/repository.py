@@ -279,6 +279,33 @@ class Repository:
             )
         return int(row["id"])
 
+    def embedding_coverage(self) -> list[dict]:
+        """Which models the searchable vectors were actually produced by.
+
+        A search only compares against one model, so this is what decides whether
+        an empty result means "nothing matched" or "nothing here was embedded by
+        the model this process is configured with".
+
+        Only active chunks count, because only active chunks are searchable. A
+        model whose rows were all superseded by a re-index looks like coverage in
+        `chunk_embeddings` while contributing nothing to any query, which is
+        exactly the state that follows switching models and re-indexing.
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT m.id AS embedding_model_id, m.provider, m.model_name,
+                       count(*) AS chunk_count
+                FROM chunk_embeddings e
+                JOIN document_chunks c ON c.id = e.chunk_id
+                JOIN embedding_models m ON m.id = e.embedding_model_id
+                WHERE c.active = TRUE
+                GROUP BY m.id, m.provider, m.model_name
+                ORDER BY count(*) DESC
+                """
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
     def embedding_column_dimension(self) -> int:
         """The dimension fixed in the chunk_embeddings.embedding column type."""
         with self.connection.cursor() as cursor:

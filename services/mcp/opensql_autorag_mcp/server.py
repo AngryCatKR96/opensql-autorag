@@ -6,7 +6,7 @@ from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
 from opensql_autorag_api.db import get_connection
-from opensql_autorag_api.embeddings import get_embedding_provider
+from opensql_autorag_api.embeddings import embedding_mismatch, get_embedding_provider
 from opensql_autorag_api.outline_access import resolver
 from opensql_autorag_api.repository import Repository, SearchScope
 from opensql_autorag_api.settings import settings
@@ -67,12 +67,17 @@ def search_documents(query: str, top_k: int = 5) -> dict:
             dimension=provider.dimension,
         )
         results = repository.search_chunks(query_embedding, top_k, embedding_model_id, scope)
+        # An agent cannot read a server log. If the answer is empty because this
+        # process is pointed at a model nothing was indexed with, that has to
+        # travel back in the tool result or it is invisible.
+        warning = embedding_mismatch(repository, embedding_model_id) if not results else None
     return {
         "query": query,
         "top_k": top_k,
         "embedding_model": f"{settings.embedding_provider}/{provider.model_name}",
         "scope": applied_scope,
         "results": _rows(results),
+        "warning": warning,
     }
 
 

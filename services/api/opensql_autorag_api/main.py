@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -9,7 +11,7 @@ from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import RedirectResponse
 
 from opensql_autorag_api.db import get_connection
-from opensql_autorag_api.embeddings import get_embedding_provider
+from opensql_autorag_api.embeddings import embedding_mismatch, get_embedding_provider
 from opensql_autorag_api.oauth import OAuthError, OAuthNotConfigured, oauth
 from opensql_autorag_api.outline_access import (
     InvalidOutlineToken,
@@ -21,7 +23,38 @@ from opensql_autorag_api.schemas import DocumentSummary, DocumentUploadResponse,
 from opensql_autorag_api.sessions import COOKIE_NAME, SessionStore
 from opensql_autorag_api.settings import settings
 
-app = FastAPI(title="OpenSQL AutoRAG Sync")
+logger = logging.getLogger(__name__)
+
+
+def _report_embedding_mismatch() -> str | None:
+    """Resolve the configured model against what is actually indexed."""
+    provider = get_embedding_provider()
+    with get_connection() as connection:
+        repository = Repository(connection)
+        embedding_model_id = repository.resolve_embedding_model_id(
+            provider=settings.embedding_provider,
+            model_name=provider.model_name,
+            dimension=provider.dimension,
+        )
+        return embedding_mismatch(repository, embedding_model_id)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Say at boot what would otherwise only show up as empty search results.
+
+    This does not refuse to start. Uploading and listing still work with a
+    mismatched search model, and a database that is briefly unreachable at boot
+    should not keep the process down.
+    """
+    with suppress(Exception):
+        problem = _report_embedding_mismatch()
+        if problem:
+            logger.error("embedding configuration: %s", problem)
+    yield
+
+
+app = FastAPI(title="OpenSQL AutoRAG Sync", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -88,9 +121,7 @@ def outline_callback(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     with get_connection() as connection:
-        cookie_value = SessionStore(connection).create(
-            tokens, identity.user_id, identity.user_name
-        )
+        cookie_value = SessionStore(connection).create(tokens, identity.user_id, identity.user_name)
 
     destination = pending["redirect_after"] or "/"
     response = RedirectResponse(destination, status_code=303)
@@ -259,13 +290,17 @@ def search_documents(request: SearchRequest, http_request: Request) -> dict:
             model_name=provider.model_name,
             dimension=provider.dimension,
         )
-        rows = repository.search_chunks(
-            query_embedding, request.top_k, embedding_model_id, scope
-        )
+        rows = repository.search_chunks(query_embedding, request.top_k, embedding_model_id, scope)
+        # Only worth resolving when there is nothing to show: an empty result is
+        # the one case a caller cannot tell apart from a misconfiguration.
+        warning = embedding_mismatch(repository, embedding_model_id) if not rows else None
+    if warning:
+        logger.error("embedding configuration: %s", warning)
     return {
         "query": request.query,
         "top_k": request.top_k,
         "embedding_model": f"{settings.embedding_provider}/{provider.model_name}",
         "scope": applied_scope,
         "results": rows,
+        "warning": warning,
     }
