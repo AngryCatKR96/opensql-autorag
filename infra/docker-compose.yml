@@ -46,6 +46,121 @@ services:
       retries: 30
       start_period: 60s
 
+  # A throwaway Outline wiki to develop the connector against, see
+  # docs/outline.md. Every credential below is fixed and public on purpose: this
+  # instance holds nothing, and a test stack that needs a secret generated first
+  # is a test stack nobody runs.
+  #
+  #   docker compose -f infra/docker-compose.yml --profile outline up -d
+  outline:
+    profiles: ["outline"]
+    image: outlinewiki/outline:latest
+    depends_on:
+      outline-db:
+        condition: service_healthy
+      outline-redis:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      SECRET_KEY: 1a531c970c7074dbc8dc456b89bb1b5a444f313b8e343b1189ef72d86f90ac81
+      UTILS_SECRET: 309c39189509259582b101c8561f441189b63e0afe19e61ce4229e8b59aac61e
+      DATABASE_URL: postgres://outline:outline@outline-db:5432/outline
+      PGSSLMODE: disable
+      REDIS_URL: redis://outline-redis:6379
+      # Must match the redirect URI registered with dex, and the base URL the
+      # connector and the API are pointed at.
+      URL: http://localhost:3300
+      PORT: "3000"
+      FORCE_HTTPS: "false"
+      # Honour outline-proxy's X-Forwarded-Proto. Without it Outline reads the
+      # connection as unencrypted and signing in fails, see infra/outline/nginx.conf.
+      PROXY_HEADERS_TRUSTED: "true"
+      FILE_STORAGE: local
+      FILE_STORAGE_LOCAL_ROOT_DIR: /var/lib/outline/data
+      FILE_STORAGE_UPLOAD_MAX_SIZE: "26214400"
+      # Backfilling a wiki is exactly the traffic shape a rate limiter drops.
+      RATE_LIMITER_ENABLED: "false"
+      # Outline refuses to deliver a webhook to a private address, which is
+      # every address the connector could have here. These cover the host as
+      # seen from the container (host.docker.internal) and the compose network,
+      # so a connector on either side receives deliveries. A real deployment
+      # leaves this unset.
+      ALLOWED_PRIVATE_IP_ADDRESSES: "192.168.0.0/16,172.16.0.0/12,10.0.0.0/8"
+      OIDC_CLIENT_ID: outline
+      OIDC_CLIENT_SECRET: outline-dex-secret
+      # dex shares this container's network namespace, so localhost reaches it
+      # from here and, through the published port below, from the browser too.
+      OIDC_AUTH_URI: http://localhost:5556/dex/auth
+      OIDC_TOKEN_URI: http://localhost:5556/dex/token
+      OIDC_USERINFO_URI: http://localhost:5556/dex/userinfo
+      OIDC_LOGOUT_URI: ""
+      OIDC_USERNAME_CLAIM: email
+      OIDC_DISPLAY_NAME: Dex
+      OIDC_SCOPES: "openid profile email"
+    ports:
+      # dex, which has no ports of its own. Outline itself is reached through
+      # outline-proxy.
+      - "5556:5556"
+    volumes:
+      - outline_data:/var/lib/outline/data
+
+  # See infra/outline/nginx.conf: Outline refuses to sign anybody in over plain
+  # HTTP, and this is what makes the request look encrypted to it.
+  outline-proxy:
+    profiles: ["outline"]
+    image: nginx:1.27-alpine
+    depends_on:
+      outline:
+        condition: service_started
+    ports:
+      - "3300:3300"
+    volumes:
+      - ./outline/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  outline-db:
+    profiles: ["outline"]
+    image: postgres:16
+    environment:
+      POSTGRES_DB: outline
+      POSTGRES_USER: outline
+      POSTGRES_PASSWORD: outline
+    volumes:
+      - outline_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U outline -d outline"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  outline-redis:
+    profiles: ["outline"]
+    image: redis:7
+
+  # Outline has no local password login, so the test stack brings its own
+  # identity provider. It runs inside Outline's network namespace so that one
+  # URL — localhost:5556 — reaches it from both the browser and Outline; an
+  # OIDC issuer only works if both audiences agree on it. Consequence: no ports
+  # or networks of its own, and it starts only once Outline exists.
+  dex:
+    profiles: ["outline"]
+    image: dexidp/dex:latest
+    network_mode: "service:outline"
+    depends_on:
+      outline:
+        condition: service_started
+    environment:
+      # bcrypt of "autorag-demo" for both accounts. Cost 12: dex rejects
+      # anything below 10, and htpasswd -B defaults to 5.
+      DEX_ADMIN_HASH: $$2y$$12$$kO1pQFzSD9/TjbNBG/1jyOAfXAaiusdRTKaKFjNXB69vK0Spuecra
+      DEX_READER_HASH: $$2y$$12$$kO1pQFzSD9/TjbNBG/1jyOAfXAaiusdRTKaKFjNXB69vK0Spuecra
+    command: ["dex", "serve", "/etc/dex/dex.yaml"]
+    volumes:
+      - ./outline/dex.yaml:/etc/dex/dex.yaml:ro
+      - outline_dex_data:/var/dex
+
 volumes:
   opensql_autorag_data:
   opensql_demo_data:
+  outline_data:
+  outline_db_data:
+  outline_dex_data:

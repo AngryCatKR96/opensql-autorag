@@ -265,6 +265,59 @@ move changes which collection a document belongs to without touching its text,
 and the collection is what search filters permissions on. A document that is no
 longer readable when re-fetched is logged and skipped.
 
+## A test instance in docker
+
+`--profile outline` brings up a throwaway wiki to develop against, so the
+connector, the permission filter, and the sign-in flow can be exercised without
+pointing anything at a wiki people use.
+
+```bash
+docker compose -f infra/docker-compose.yml --profile outline up -d
+```
+
+Outline at http://localhost:3300, signed in with `admin@autorag.test` or
+`reader@autorag.test`, password `autorag-demo` for both. The first account to
+sign in becomes the workspace admin. Every credential in the compose file is
+fixed and public: the instance holds nothing, and a test stack that needs a
+secret generated before it runs is a test stack nobody runs.
+
+Four things about it are not obvious, and each is a real constraint rather than
+a shortcut:
+
+- **It brings its own identity provider.** Self-hosted Outline has no local
+  password login, so an account has to come from SSO. Dex plays that part, with
+  two static accounts so one collection can be readable by one of them and not
+  the other.
+- **Dex runs inside Outline's network namespace.** An OIDC issuer only works if
+  the browser and the relying party agree on one URL, and `localhost:5556` is
+  the only thing that means the same to both. That is also why dex publishes no
+  ports of its own — Outline publishes them.
+- **nginx sits in front.** Outline marks its OAuth CSRF cookie `Secure`
+  whenever `NODE_ENV=production` and koa then refuses to set it over plain
+  HTTP, so signing in fails with a 500 before it reaches dex. The proxy asserts
+  `X-Forwarded-Proto: https`, which Outline trusts, and Chrome accepts Secure
+  cookies from `http://localhost`.
+- **`ALLOWED_PRIVATE_IP_ADDRESSES` is set.** Outline refuses to deliver a
+  webhook to a private address, which is every address the connector can have
+  locally. A real deployment leaves this unset.
+
+Point the platform at it, and give the connector an address Outline can reach
+from inside its container:
+
+```bash
+export AUTORAG_OUTLINE_BASE_URL=http://localhost:3300
+export AUTORAG_OUTLINE_API_KEY=<Settings -> API Keys in Outline>
+```
+
+The webhook URL registered in Outline is then
+`http://host.docker.internal:8201/outline/webhook` for a connector running on
+the host, matching `AUTORAG_OUTLINE_WEBHOOK_SECRET`.
+
+For the sign-in flow, register the application under Settings → Applications
+with the redirect URI `http://localhost:8000/auth/outline/callback`, and set
+`AUTORAG_OUTLINE_OAUTH_CLIENT_ID` and `AUTORAG_OUTLINE_OAUTH_CLIENT_SECRET`
+from it.
+
 ## Limits
 
 - **Permissions are enforced per collection, not per document.** A document

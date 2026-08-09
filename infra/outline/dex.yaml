@@ -1,0 +1,49 @@
+# Identity provider for the test Outline instance.
+#
+# Self-hosted Outline has no local password login: an account has to come from
+# an SSO provider, so a throwaway one is part of the test stack. Dex is here to
+# hand Outline two distinct people, which is what the permission filter is
+# tested against — not to be realistic.
+#
+# The issuer has to be one URL that means the same thing to the browser on the
+# host and to the Outline container, which normally rules out `localhost`. It
+# works here because dex runs inside Outline's network namespace
+# (`network_mode: service:outline`), so both sides reach it at localhost:5556.
+#
+# Everything below is literal: dex 2.46 does not expand environment variables in
+# this file. `hashFromEnv` is dex reading the variable itself, not substitution.
+
+issuer: http://localhost:5556/dex
+
+storage:
+  type: sqlite3
+  config:
+    file: /var/dex/dex.db
+
+web:
+  http: 0.0.0.0:5556
+
+# One less click between "sign in" and having a session.
+oauth2:
+  skipApprovalScreen: true
+
+staticClients:
+  - id: outline
+    name: Outline
+    secret: outline-dex-secret
+    redirectURIs:
+      - http://localhost:3300/auth/oidc.callback
+
+enablePasswordDB: true
+
+# The first of these to sign in becomes the workspace admin. Two accounts, so a
+# collection can be readable by one and not the other.
+staticPasswords:
+  - email: "admin@autorag.test"
+    username: "admin"
+    userID: "6a52c1b6-1f6a-4d3a-9b8f-0a0d1c2e3f40"
+    hashFromEnv: DEX_ADMIN_HASH
+  - email: "reader@autorag.test"
+    username: "reader"
+    userID: "9c11d0ee-2b7c-4f51-8a2d-5e6f7a8b9c01"
+    hashFromEnv: DEX_READER_HASH
