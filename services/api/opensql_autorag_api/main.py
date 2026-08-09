@@ -308,3 +308,33 @@ def search_documents(request: SearchRequest, http_request: Request) -> dict:
         "results": outcome.rows,
         "warning": outcome.warning,
     }
+
+
+@app.get("/chunks/{chunk_id}/context")
+def get_chunk_context(chunk_id: UUID, http_request: Request) -> dict:
+    """The chunks either side of one hit.
+
+    Scoped like search: a chunk id is not a capability, so a caller who may not
+    read the document gets nothing rather than its neighbouring text.
+    """
+    scope, _ = _resolve_scope(http_request)
+    with get_connection() as connection:
+        context = Repository(connection).get_chunk_context(chunk_id, scope)
+    return {"chunk_id": chunk_id, "context": context}
+
+
+@app.get("/documents/{document_id}/sync-status")
+def get_sync_status(document_id: UUID, http_request: Request) -> dict:
+    """What the last indexing run did to this document.
+
+    A document out of scope reads the same as one that was never indexed. The
+    alternative tells a caller which document ids exist, which is a fact about
+    the wiki they were not given.
+    """
+    scope, _ = _resolve_scope(http_request)
+    with get_connection() as connection:
+        repository = Repository(connection)
+        if not repository.document_in_scope(document_id, scope):
+            return {"document_id": document_id, "status": None}
+        status = repository.latest_sync_status(document_id)
+    return {"document_id": document_id, "status": status}

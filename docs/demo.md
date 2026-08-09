@@ -18,8 +18,11 @@ AUTORAG_DB_PORT=5442 docker compose -f infra/docker-compose.yml up -d
 export AUTORAG_DATABASE_URL=postgresql://autorag:autorag@127.0.0.1:5442/autorag
 ```
 
-The API, the worker, the MCP server, and the connector all read
-`AUTORAG_DATABASE_URL`, so exporting it once covers every process.
+The API, the worker, and the connector all read `AUTORAG_DATABASE_URL`, so
+exporting it once covers every process that touches the database. The MCP
+server is not one of them: it asks the API rather than the database, and is
+configured with `AUTORAG_API_BASE_URL` instead. See
+[Attaching an agent](mcp.md).
 
 ## Real OpenSQL
 
@@ -49,8 +52,8 @@ export PYTHONPATH=packages/core:services/api:services/connector
 
 ## Embeddings
 
-The API, the worker, and the MCP server all build their provider from the same
-settings, so one variable switches every retrieval path:
+The API and the worker build their provider from the same settings, so one
+variable switches every retrieval path:
 
 | `AUTORAG_EMBEDDING_PROVIDER` | Model | Use |
 |------------------------------|-------|-----|
@@ -63,8 +66,9 @@ export AUTORAG_EMBEDDING_PROVIDER=sentence-transformers
 
 Embedding runs in the process that needs it — `sentence-transformers` loads the
 model once per process and encodes locally, on Apple Silicon through MPS. No
-document text and no search query leaves the machine. Each of the API, the
-worker, and the MCP server keeps its own copy in memory.
+document text and no search query leaves the deployment. The API and the worker
+each keep their own copy in memory; the MCP server keeps none, because it does
+not embed anything.
 
 ### Query and passage are not the same text
 
@@ -196,14 +200,21 @@ other.
     [Syncing an Outline wiki](outline.md#permissions).
 11. Delete a page in Outline and search once more: it is gone from the results,
     and the console marks it "removed at source".
-12. Start the MCP server.
+12. Attach an agent. The MCP server runs on the machine the agent runs on and
+    asks the API, so it needs no database of its own — the one setting is where
+    the API lives, plus the developer's own Outline token.
 
 ```bash
-PYTHONPATH=packages/core:services/api:services/mcp .venv/bin/python -m opensql_autorag_mcp.server
+AUTORAG_API_BASE_URL=http://127.0.0.1:8000 \
+AUTORAG_OUTLINE_USER_TOKEN=ol_api_... \
+PYTHONPATH=services/api:services/mcp .venv/bin/python -m opensql_autorag_mcp.server
 ```
 
-13. Connect an MCP client and call `search_documents`. It answers over the same
-    retrieval path as the console, scoped to the token the server runs with.
+13. Ask the agent a question its own training cannot answer — something from a
+    planning document in the wiki. It calls `search_documents` over the same
+    retrieval path as the console, scoped to that developer's own Outline
+    access. Configuration for Codex and Claude Code is in
+    [Attaching an agent](mcp.md).
 
 ## Positioning
 

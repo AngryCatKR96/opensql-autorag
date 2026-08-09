@@ -6,7 +6,8 @@ content that keeps changing.
 Bring documents in — upload them, or point it at an Outline wiki — and the
 platform extracts, chunks, embeds, and indexes them. Edit one section of a page
 and it re-embeds that section, not the document. Search from the console, from
-the REST API, or from any MCP client.
+the REST API, or from a coding agent with the [MCP server](docs/mcp.md) — each
+developer running one under their own wiki account.
 
 ## What makes it more than a pgvector demo
 
@@ -26,8 +27,10 @@ full text search answers whether it contains the words asked for. `ERR_HNSW_2481
 is the difference — an embedding blurs it into whatever it resembles. Both run
 and are fused by reciprocal rank, and each result says which arm found it.
 
-**Nothing leaves the host.** Embeddings are computed in-process by
-`intfloat/multilingual-e5-small`. No document text and no query is sent anywhere.
+**Nothing leaves the deployment.** Embeddings are computed in-process by
+`intfloat/multilingual-e5-small`, so no document text and no query is sent to
+anyone else's service. A query typed into the console or asked by an agent
+travels as far as this platform's own API and no further.
 
 ## Running it
 
@@ -49,13 +52,14 @@ real OpenSQL and a disposable Outline instance to develop against.
 | `services/api` | REST API, retrieval, sessions, Outline access resolution |
 | `services/worker` | Extraction, chunking, embedding, index job loop |
 | `services/connector` | Outline webhook receiver, backfill, preflight |
-| `services/mcp` | MCP server, over the same retrieval path as the API |
+| `services/mcp` | MCP server, a client of the API so it carries no database credential |
 | `apps/web` | React console |
 | `infra` | Compose stacks, schema, the OpenSQL image, an Outline test instance |
 
 ## Documentation
 
 - [docs/demo.md](docs/demo.md) — running it, search modes, chunking, the demo script
+- [docs/mcp.md](docs/mcp.md) — attaching Codex or Claude Code to the corpus
 - [docs/outline.md](docs/outline.md) — syncing a wiki, permissions, signing in, webhooks
 - [docs/opensql.md](docs/opensql.md) — the licensed OpenSQL build, vector index settings, HA
 - [docs/superpowers/specs](docs/superpowers/specs) — architecture design

@@ -50,9 +50,22 @@ class Settings(BaseSettings):
     outline_timeout_seconds: float = 10.0
     outline_page_size: int = 50
 
-    # Token used by the MCP server, which serves one user over stdio and so has
-    # no per-request place to carry a caller's token.
+    # The Outline token the MCP server presents to the API on every call. That
+    # server speaks stdio to the one developer who launched it, so their token
+    # comes from the environment rather than from a request. Without one, only
+    # documents uploaded straight into AutoRAG are searched -- wiki content is
+    # not served to an unidentified caller.
     outline_user_token: str = ""
+
+    # Where the MCP server reaches this API. It holds no database credentials of
+    # its own and embeds nothing: it asks the API, which resolves the token above
+    # into a scope, applies the filter in SQL, and embeds the query. A developer
+    # running it on their own machine needs this URL and their token, nothing
+    # else -- no database reachable from their laptop, no model downloaded onto
+    # it, and no way to read past the filter by querying around it.
+    api_base_url: str = "http://127.0.0.1:8000"
+    # Generous because a first search can wait on the API loading its model.
+    api_timeout_seconds: float = 30.0
 
     # How long a resolved set of readable collections is reused. Longer means
     # fewer calls to Outline; it also bounds how long a revoked membership keeps
