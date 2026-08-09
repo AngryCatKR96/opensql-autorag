@@ -1,4 +1,5 @@
 services:
+  # Stand-in PostgreSQL for local development and CI.
   db:
     image: pgvector/pgvector:pg16
     environment:
@@ -11,5 +12,40 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
       - opensql_autorag_data:/var/lib/postgresql/data
 
+  # Tmax OpenSQL for PostgreSQL 17.8 with pgvector 0.8.1.
+  # Requires the licensed artifacts, see docs/opensql.md:
+  #   ./infra/opensql/stage-artifacts.sh <package.tar.gz> <license.xml>
+  #   docker compose -f infra/docker-compose.yml --profile opensql up -d --build
+  opensql:
+    profiles: ["opensql"]
+    build:
+      context: ./opensql
+      args:
+        OPENSQL_PACKAGE: Tmax_OpenSQL_3.17.8.7_rockylinux9.7_buildtime20260720.tar.gz
+    # The distribution ships x86_64 binaries only.
+    platform: linux/amd64
+    # The license is bound to this hostname (identified_by_host).
+    hostname: opensql-demo
+    # The license allows 4 CPUs (limit_cpu); the server refuses to start above it.
+    cpus: 4
+    shm_size: "256mb"
+    environment:
+      POSTGRES_DB: autorag
+      POSTGRES_USER: autorag
+      POSTGRES_PASSWORD: autorag
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./opensql/licenses/license.xml:/opt/opensql/license/license.xml:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+      - opensql_demo_data:/opt/opensql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autorag -d autorag"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
 volumes:
   opensql_autorag_data:
+  opensql_demo_data:

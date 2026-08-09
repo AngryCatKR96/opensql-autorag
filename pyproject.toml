@@ -5,7 +5,13 @@ description = "OpenSQL based AutoRAG document indexing and delta sync demo"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
-pythonpath = ["packages/core", "services/api", "services/worker", "services/mcp"]
+pythonpath = [
+    "packages/core",
+    "services/api",
+    "services/worker",
+    "services/mcp",
+    "services/connector",
+]
 testpaths = ["tests"]
 
 [tool.ruff]

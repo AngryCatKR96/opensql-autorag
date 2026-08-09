@@ -11,8 +11,12 @@ CREATE TABLE IF NOT EXISTS embedding_models (
     UNIQUE (provider, model_name)
 );
 
+-- Selected with AUTORAG_EMBEDDING_PROVIDER; the services register the row they
+-- use on startup, so this seed only documents the expected models.
 INSERT INTO embedding_models (provider, model_name, dimension, distance_metric)
-VALUES ('sentence-transformers', 'intfloat/multilingual-e5-small', 384, 'cosine')
+VALUES
+    ('sentence-transformers', 'intfloat/multilingual-e5-small', 384, 'cosine'),
+    ('hash', 'sha256-deterministic', 384, 'cosine')
 ON CONFLICT (provider, model_name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS documents (
@@ -21,7 +25,11 @@ CREATE TABLE IF NOT EXISTS documents (
     source_type TEXT NOT NULL,
     current_version_id UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Set when the document was removed at its source. Retired documents keep
+    -- their chunks for audit but none of them are active, and an indexing job
+    -- that completes afterwards must not reactivate them.
+    retired_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS document_versions (
@@ -37,6 +45,20 @@ CREATE TABLE IF NOT EXISTS document_versions (
 ALTER TABLE documents
     ADD CONSTRAINT documents_current_version_fk
     FOREIGN KEY (current_version_id) REFERENCES document_versions(id);
+
+-- Where a document came from, when it is synced from an external system such as
+-- an Outline wiki. Documents uploaded through the API have no row here.
+CREATE TABLE IF NOT EXISTS document_sources (
+    document_id UUID PRIMARY KEY REFERENCES documents(id),
+    source_system TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    external_url TEXT,
+    external_updated_at TIMESTAMPTZ,
+    collection_id TEXT,
+    last_file_hash TEXT,
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (source_system, external_id)
+);
 
 CREATE TABLE IF NOT EXISTS document_chunks (
     id UUID PRIMARY KEY,
@@ -88,6 +110,34 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     elapsed_ms INTEGER NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- One in-flight OAuth login. Holds the CSRF state and the PKCE verifier between
+-- the redirect to Outline and the callback, so neither has to travel through the
+-- browser. Rows are consumed on callback and are useless once expired.
+CREATE TABLE IF NOT EXISTS oauth_logins (
+    state TEXT PRIMARY KEY,
+    code_verifier TEXT NOT NULL,
+    redirect_after TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+-- A signed-in caller. The session cookie is stored as a digest so a leaked dump
+-- cannot be replayed as a session, and the Outline tokens are encrypted with
+-- AUTORAG_SESSION_SECRET rather than kept as plain text.
+CREATE TABLE IF NOT EXISTS oauth_sessions (
+    id TEXT PRIMARY KEY,
+    outline_user_id TEXT NOT NULL,
+    outline_user_name TEXT NOT NULL DEFAULT '',
+    access_token_encrypted BYTEA NOT NULL,
+    refresh_token_encrypted BYTEA,
+    access_token_expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS oauth_sessions_expires_idx ON oauth_sessions (expires_at);
 
 CREATE TABLE IF NOT EXISTS query_logs (
     id UUID PRIMARY KEY,

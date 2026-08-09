@@ -4,9 +4,16 @@
 node_modules/
 dist/
 build/
+*.tsbuildinfo
 __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 data/
 *.log
+
+# Licensed Tmax OpenSQL artifacts, staged by infra/opensql/stage-artifacts.sh
+infra/opensql/dist/
+infra/opensql/licenses/
+
+.DS_Store

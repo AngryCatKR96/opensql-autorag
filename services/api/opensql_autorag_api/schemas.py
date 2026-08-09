@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -17,6 +18,9 @@ class DocumentSummary(BaseModel):
     source_type: str
     current_version_id: UUID | None
     active_chunk_count: int
+    # Set when the document was removed at its source; its chunks are retained
+    # but none of them are searchable.
+    retired_at: datetime | None = None
 
 
 class SearchRequest(BaseModel):

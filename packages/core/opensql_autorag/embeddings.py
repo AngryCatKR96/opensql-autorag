@@ -5,8 +5,11 @@ import math
 import struct
 from typing import Protocol
 
+HASH_MODEL_NAME = "sha256-deterministic"
+
 
 class EmbeddingProvider(Protocol):
+    model_name: str
     dimension: int
 
     def embed(self, text: str) -> list[float]:
@@ -17,6 +20,7 @@ class HashEmbeddingProvider:
     def __init__(self, dimension: int = 384) -> None:
         if dimension <= 0:
             raise ValueError("dimension must be positive")
+        self.model_name = HASH_MODEL_NAME
         self.dimension = dimension
 
     def embed(self, text: str) -> list[float]:
@@ -46,6 +50,24 @@ class SentenceTransformerEmbeddingProvider:
         prefixed = f"query: {text}" if len(text.split()) < 80 else f"passage: {text}"
         vector = self.model.encode(prefixed, normalize_embeddings=True)
         return [float(value) for value in vector]
+
+
+def create_embedding_provider(
+    provider: str,
+    model_name: str,
+    dimension: int,
+) -> EmbeddingProvider:
+    """Build the embedding provider selected by configuration.
+
+    `dimension` only applies to the hash provider; a real model reports its own.
+    """
+    if provider == "hash":
+        return HashEmbeddingProvider(dimension=dimension)
+    if provider == "sentence-transformers":
+        return SentenceTransformerEmbeddingProvider(model_name=model_name)
+    raise ValueError(
+        f"unknown embedding provider: {provider!r} (expected 'hash' or 'sentence-transformers')"
+    )
 
 
 def validate_dimension(configured: int, observed: int, column: int) -> None:

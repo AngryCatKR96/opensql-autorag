@@ -5,12 +5,14 @@ from pathlib import Path
 from opensql_autorag.chunking import SemanticChunker
 from opensql_autorag.delta import DeltaPlanner
 from opensql_autorag.domain import Chunk, ChunkDecision
-from opensql_autorag.embeddings import EmbeddingProvider, HashEmbeddingProvider
+from opensql_autorag.embeddings import EmbeddingProvider
+from opensql_autorag_api.embeddings import get_embedding_provider
 
 from opensql_autorag_worker.extractors import extract_blocks
 
 
 class CountingEmbeddingProvider:
+    model_name = "counting"
     dimension = 384
 
     def __init__(self) -> None:
@@ -29,7 +31,7 @@ class IndexProcessor:
     ) -> None:
         self.chunker = chunker or SemanticChunker()
         self.delta_planner = DeltaPlanner()
-        self.embedding_provider = embedding_provider or HashEmbeddingProvider(dimension=384)
+        self.embedding_provider = embedding_provider or get_embedding_provider()
 
     def preview_file(
         self,
