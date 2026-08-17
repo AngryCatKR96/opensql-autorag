@@ -342,8 +342,15 @@ export AUTORAG_OUTLINE_API_KEY=<Settings -> API Keys in Outline>
 ```
 
 The webhook URL registered in Outline is then
-`http://host.docker.internal:8201/outline/webhook` for a connector running on
-the host, matching `AUTORAG_OUTLINE_WEBHOOK_SECRET`.
+`http://host.docker.internal:8200/outline/webhook` for a connector running on
+the host, on the port [Webhook](#webhook) above starts it on, and matching
+`AUTORAG_OUTLINE_WEBHOOK_SECRET`. `host.docker.internal` is how Outline reaches
+out of its container to the host; the port is the connector's own.
+
+Registering a port nothing is listening on fails the same quiet way a
+mis-specified event name does: the subscription saves, stays enabled, and is
+never delivered to. If edits in the wiki are not reaching the index, check this
+before anything else.
 
 For the sign-in flow, register the application under Settings → Applications
 with the redirect URI `http://localhost:8000/auth/outline/callback`, and set
