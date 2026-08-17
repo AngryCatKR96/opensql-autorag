@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
@@ -8,6 +9,41 @@ from opensql_autorag.domain import Chunk
 from psycopg import Connection
 
 from opensql_autorag_api.settings import settings
+
+# Alphanumeric runs joined by the separators Postgres' parser throws away:
+# ERR_HNSW_2481, shared_buffers, hnsw.ef_search, vector_cosine_ops.
+_IDENTIFIER = re.compile(r"[A-Za-z0-9]+(?:[_.][A-Za-z0-9]+)+")
+
+
+def _identifier_queries(query: str) -> list[str]:
+    """One tsquery per identifier the caller typed, as an adjacency phrase.
+
+    The parser splits `ERR_HNSW_2481` into `err`, `hnsw` and `2481` and there is
+    no configuration that stops it -- `_` is classified as blank. Requiring the
+    parts to be *adjacent* puts the identifier back together out of the pieces
+    the index already holds, so this needs no second index and no second copy of
+    the text.
+
+    The last part carries a prefix match because Korean attaches particles
+    directly to it: `ERR_HNSW_2481이` tokenises with a final lexeme of `2481이`,
+    which no exact term can match. `2481:*` does, and stays selective -- the
+    parts before it still have to be adjacent and in order, so a chunk merely
+    mentioning HNSW, or holding ERR_PLAN_2481, does not match.
+
+    Every part is reduced to lowercase alphanumerics, which is what makes the
+    result safe to hand to `to_tsquery`: anything a caller could use to change
+    the query's shape is removed rather than escaped.
+    """
+    found: list[str] = []
+    for match in _IDENTIFIER.findall(query):
+        parts = [re.sub(r"[^a-z0-9]", "", part) for part in re.split(r"[_.]+", match.lower())]
+        parts = [part for part in parts if part]
+        if len(parts) < 2:
+            continue
+        phrase = " <-> ".join([*parts[:-1], f"{parts[-1]}:*"])
+        if phrase not in found:
+            found.append(phrase)
+    return found
 
 
 def _vector_literal(embedding: list[float]) -> str:
@@ -467,8 +503,28 @@ class Repository:
         "index". The cost is that quoted phrases and `-exclusion` are not
         honoured here; the lexemes come from `to_tsvector`, so this never fails
         on punctuation the way `to_tsquery` does on raw input.
+
+        That reasoning only holds while the identifier survives as one lexeme,
+        and by default it does not. Postgres' parser classifies `_` and `.` as
+        blank, so `ERR_HNSW_2481` is split into `err`, `hnsw` and `2481`, and OR
+        then matches every chunk mentioning HNSW at all. The rare identifier
+        stops being rare -- it ranks below whatever repeats `hnsw` most, and the
+        arm scans thousands of rows to decide it. Identifiers are therefore
+        matched separately, against the same text with those separators removed,
+        and are *required*: a caller who typed one meant it literally, and the
+        vector arm is still there for the reading that did not.
         """
         config = settings.text_search_config
+        identifiers = _identifier_queries(query)
+        # Any one of them, rather than all: two identifiers in a query are
+        # alternatives far more often than they are a conjunction, and either
+        # alone is selective enough to keep this cheap.
+        required = " | ".join(f"({phrase})" for phrase in identifiers)
+        identifier_clause = (
+            f"AND to_tsvector('{config}', c.text) @@ to_tsquery('{config}', %s)"
+            if identifiers
+            else ""
+        )
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -489,15 +545,17 @@ class Repository:
                 CROSS JOIN parsed
                 WHERE c.active = TRUE
                   AND to_tsvector('{config}', c.text) @@ parsed.query
+                  {identifier_clause}
                   AND (
                         (s.document_id IS NULL AND %s)
                      OR s.collection_id = ANY(%s::text[])
                   )
                 ORDER BY score DESC
                 LIMIT %s
-                """,  # noqa: S608 - config is a server-side setting, never caller input
+                """,  # noqa: S608 - config is a setting; the identifier clause is parameterised
                 (
                     query,
+                    *([required] if identifiers else []),
                     scope.include_local_documents,
                     list(scope.allowed_collection_ids),
                     top_k,

@@ -90,18 +90,48 @@ def seeded(db_connection):
     fixture = Fixture(repository, model_id)
     # The token only the first document carries, in a document the vector arm
     # ranks last -- which is the whole reason the keyword arm exists.
+    #
+    # The identifier is written the way identifiers actually are, with
+    # underscores. These tests used to spell it as one unbroken word, which is
+    # the one shape that cannot fail: Postgres splits on `_`, so a realistic
+    # identifier reached the index as its common parts, and the arm meant to
+    # carry the rare thing was matching `hnsw`.
     fixture.add(
         "carries-the-token",
-        "ERRHNSWPROBE raised when an index scan stops early",
+        "ERR_HNSW_2481 raised when an index scan stops early",
         collection_id="col-platform",
         weight=0.1,
     )
     fixture.add("nearest-vector", "an index scan that stops early", collection_id="col-platform")
     fixture.add(
         "out-of-scope",
-        "ERRHNSWPROBE appears here too but nobody may read it",
+        "ERR_HNSW_2481 appears here too but nobody may read it",
         collection_id="col-secrets",
         weight=0.9,
+    )
+    # Holds every part of the identifier -- err, hnsw, 2481 -- and not the
+    # identifier. Under an OR of the parts this outranks the document that has
+    # the real thing, because it repeats the common half of it.
+    fixture.add(
+        "holds-the-parts",
+        "hnsw hnsw hnsw tuning notes: err budget 2481 and hnsw ef_search",
+        collection_id="col-platform",
+        weight=0.8,
+    )
+    # Same shape, different code. A prefix match on the last part must not reach it.
+    fixture.add(
+        "neighbouring-code",
+        "ERR_PLAN_2481 is a different failure entirely",
+        collection_id="col-platform",
+        weight=0.7,
+    )
+    # Korean attaches particles straight onto the identifier, so its final lexeme
+    # is `2481이` rather than `2481`.
+    fixture.add(
+        "korean-particle",
+        "ERR_HNSW_2481이 로그에 남으면 인덱스 스캔을 먼저 확인한다",
+        collection_id="col-platform",
+        weight=0.6,
     )
     return fixture
 
@@ -114,14 +144,16 @@ def titles(rows: list[dict]) -> list[str]:
 
 
 def test_keyword_arm_finds_a_literal_token(seeded):
-    rows = seeded.repository.search_chunks_keyword("ERRHNSWPROBE", 10, PLATFORM)
+    rows = seeded.repository.search_chunks_keyword("ERR_HNSW_2481", 10, PLATFORM)
 
-    assert titles(rows) == ["carries-the-token"]
+    # Every readable chunk that holds the identifier, and nothing else: the two
+    # decoys carry its parts and a neighbouring code, not the thing itself.
+    assert sorted(titles(rows)) == ["carries-the-token", "korean-particle"]
 
 
 def test_keyword_arm_honours_the_caller_scope(seeded):
     """The permission filter has to hold on this arm too, not only on the vector one."""
-    rows = seeded.repository.search_chunks_keyword("ERRHNSWPROBE", 10, PLATFORM)
+    rows = seeded.repository.search_chunks_keyword("ERR_HNSW_2481", 10, PLATFORM)
 
     assert "out-of-scope" not in titles(rows)
 
@@ -130,13 +162,57 @@ def test_keyword_arm_ignores_words_that_are_not_there(seeded):
     assert seeded.repository.search_chunks_keyword("kingfisher", 10, PLATFORM) == []
 
 
+def test_an_identifier_does_not_match_a_chunk_holding_only_its_parts(seeded):
+    """The failure this arm exists to prevent, and the one it used to have.
+
+    `holds-the-parts` contains err, hnsw and 2481 separately and repeats the
+    common half. Matching the parts rather than the identifier ranked it first.
+    """
+    rows = seeded.repository.search_chunks_keyword("ERR_HNSW_2481", 10, PLATFORM)
+
+    assert "holds-the-parts" not in titles(rows)
+
+
+def test_an_identifier_does_not_reach_a_neighbouring_code(seeded):
+    """ERR_PLAN_2481 shares two of three parts, including the one prefix-matched."""
+    rows = seeded.repository.search_chunks_keyword("ERR_HNSW_2481", 10, PLATFORM)
+
+    assert "neighbouring-code" not in titles(rows)
+
+
+def test_an_identifier_is_found_with_a_korean_particle_attached(seeded):
+    """`ERR_HNSW_2481이` tokenises with a final lexeme of `2481이`, not `2481`."""
+    rows = seeded.repository.search_chunks_keyword("ERR_HNSW_2481", 10, PLATFORM)
+
+    assert "korean-particle" in titles(rows)
+
+
+def test_an_identifier_still_carries_a_conversational_query(seeded):
+    """The case the OR of terms was written for, now that the identifier is required."""
+    rows = seeded.repository.search_chunks_keyword(
+        "ERR_HNSW_2481 index scan behaviour on a saturday", 10, PLATFORM
+    )
+
+    assert "carries-the-token" in titles(rows)
+    # The identifier is required, so a chunk without it is not carried along by
+    # the words around it.
+    assert "nearest-vector" not in titles(rows)
+
+
+def test_a_query_without_an_identifier_keeps_the_looser_matching(seeded):
+    """No identifier means nothing to require, so the OR of terms still applies."""
+    rows = seeded.repository.search_chunks_keyword("index scan stops early", 10, PLATFORM)
+
+    assert "nearest-vector" in titles(rows)
+
+
 def test_fusion_lifts_what_only_the_keyword_arm_ranks(seeded):
     """The document the vector arm puts last wins once both arms are counted."""
     vector_only = seeded.repository.search_chunks(vector(1.0), 10, seeded.model_id, PLATFORM)
     assert titles(vector_only)[0] == "nearest-vector"
 
     fused = seeded.repository.search_chunks_hybrid(
-        "ERRHNSWPROBE", vector(1.0), 10, seeded.model_id, PLATFORM
+        "ERR_HNSW_2481", vector(1.0), 10, seeded.model_id, PLATFORM
     )
 
     assert titles(fused)[0] == "carries-the-token"
@@ -144,7 +220,7 @@ def test_fusion_lifts_what_only_the_keyword_arm_ranks(seeded):
 
 def test_fusion_reports_which_arms_matched(seeded):
     fused = seeded.repository.search_chunks_hybrid(
-        "ERRHNSWPROBE", vector(1.0), 10, seeded.model_id, PLATFORM
+        "ERR_HNSW_2481", vector(1.0), 10, seeded.model_id, PLATFORM
     )
     by_title = {row["document_title"]: row for row in fused}
 
@@ -158,7 +234,7 @@ def test_fusion_reports_which_arms_matched(seeded):
 def test_fusion_never_leaks_across_the_scope(seeded):
     """Neither arm may introduce a document the caller cannot read."""
     fused = seeded.repository.search_chunks_hybrid(
-        "ERRHNSWPROBE", vector(0.9), 10, seeded.model_id, PLATFORM
+        "ERR_HNSW_2481", vector(0.9), 10, seeded.model_id, PLATFORM
     )
 
     assert "out-of-scope" not in titles(fused)
@@ -167,7 +243,7 @@ def test_fusion_never_leaks_across_the_scope(seeded):
 def test_hybrid_scores_rank_by_reciprocal_rank(seeded):
     """Fusion is on rank, so scores are bounded by the number of arms."""
     fused = seeded.repository.search_chunks_hybrid(
-        "ERRHNSWPROBE", vector(1.0), 10, seeded.model_id, PLATFORM
+        "ERR_HNSW_2481", vector(1.0), 10, seeded.model_id, PLATFORM
     )
     scores = [row["score"] for row in fused]
 
@@ -220,13 +296,13 @@ def test_iterative_scan_is_enabled_on_the_platforms_own_connection(
 def test_keyword_arm_does_not_need_every_term_present(seeded):
     """AND semantics would discard a match over one absent word.
 
-    "ERRHNSWPROBE ... early" holds the identifier and all but the last word of
+    "ERR_HNSW_2481 ... early" holds the identifier and all but the last word of
     this query. Requiring every term, which is what websearch_to_tsquery and
     plainto_tsquery both do, would return nothing here -- so the arm meant to
     carry the identifier would contribute nothing to fusion.
     """
     rows = seeded.repository.search_chunks_keyword(
-        "ERRHNSWPROBE index scan behaviour on a saturday", 10, PLATFORM
+        "ERR_HNSW_2481 index scan behaviour on a saturday", 10, PLATFORM
     )
 
     assert "carries-the-token" in titles(rows)
@@ -234,7 +310,7 @@ def test_keyword_arm_does_not_need_every_term_present(seeded):
 
 def test_keyword_rank_prefers_the_chunk_with_more_of_the_terms(seeded):
     """OR widens what matches, so ranking is what has to discriminate."""
-    rows = seeded.repository.search_chunks_keyword("ERRHNSWPROBE index scan", 10, PLATFORM)
+    rows = seeded.repository.search_chunks_keyword("ERR_HNSW_2481 index scan", 10, PLATFORM)
 
     # Both documents contain "index scan"; only one also carries the identifier.
     assert titles(rows)[0] == "carries-the-token"
