@@ -19,6 +19,11 @@ class DocumentSummary(BaseModel):
     source_type: str
     current_version_id: UUID | None
     active_chunk_count: int
+    # What the last indexing run did: how many chunks kept their existing vector
+    # and how many had to be embedded again. Null before a document has ever
+    # been indexed. Reuse of zero on every run means delta sync is not working.
+    last_reused_count: int | None = None
+    last_embedded_count: int | None = None
     # Set when the document was removed at its source; its chunks are retained
     # but none of them are searchable.
     retired_at: datetime | None = None

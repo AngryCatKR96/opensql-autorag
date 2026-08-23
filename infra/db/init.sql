@@ -120,6 +120,12 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- The document listing carries each document's most recent sync run, which is
+-- one lateral lookup per row. Without this the planner scans sync_runs for every
+-- document and the console slows down in proportion to how much has been indexed.
+CREATE INDEX IF NOT EXISTS sync_runs_document_recent_idx
+    ON sync_runs (document_id, created_at DESC);
+
 -- One in-flight OAuth login. Holds the CSRF state and the PKCE verifier between
 -- the redirect to Outline and the callback, so neither has to travel through the
 -- browser. Rows are consumed on callback and are useless once expired.

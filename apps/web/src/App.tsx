@@ -18,6 +18,10 @@ type DocumentSummary = {
   source_type: string;
   current_version_id: string | null;
   active_chunk_count: number;
+  // What the last indexing run did. Null before a document has ever been
+  // indexed; reuse of zero on every run means delta sync is not working.
+  last_reused_count: number | null;
+  last_embedded_count: number | null;
   retired_at: string | null;
 };
 
@@ -356,6 +360,15 @@ export function App() {
                     {doc.source_type} · {doc.active_chunk_count} chunks
                     {doc.current_version_id ? ` · v.${doc.current_version_id.slice(0, 8)}` : null}
                   </p>
+                  {/* The last run's split between kept and recomputed vectors.
+                      Delta sync is a claim until this number is visible where
+                      somebody looks after editing a page. */}
+                  {doc.last_embedded_count !== null ? (
+                    <p className="docSync">
+                      <span className="reused">{doc.last_reused_count} reused</span>
+                      <span className="embedded">{doc.last_embedded_count} embedded</span>
+                    </p>
+                  ) : null}
                 </div>
                 <label className="btn iconBtn" title={`Upload a new version of ${doc.title}`}>
                   <FilePlus2 size={15} />

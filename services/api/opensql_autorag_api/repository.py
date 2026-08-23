@@ -200,20 +200,36 @@ class Repository:
             return cursor.fetchone()
 
     def list_documents(self, scope: SearchScope) -> list[dict]:
-        """Documents the caller may see. A title is content, so it is scoped too."""
+        """Documents the caller may see. A title is content, so it is scoped too.
+
+        The last indexing run comes along with each row. Reuse is the only
+        evidence that delta sync is working, and it was reaching the API and the
+        MCP tools but not the console -- the one place somebody actually watches
+        after editing a page. `sync_runs_document_recent_idx` is what keeps the
+        lateral cheap; without it this is a sequential scan per document.
+        """
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT d.id, d.title, d.source_type, d.current_version_id,
                        d.created_at, d.updated_at, d.retired_at,
                        s.collection_id AS source_collection_id,
-                       COUNT(c.id) FILTER (WHERE c.active) AS active_chunk_count
+                       COUNT(c.id) FILTER (WHERE c.active) AS active_chunk_count,
+                       r.reused_count AS last_reused_count,
+                       r.embedded_count AS last_embedded_count
                 FROM documents d
                 LEFT JOIN document_chunks c ON c.document_id = d.id
                 LEFT JOIN document_sources s ON s.document_id = d.id
+                LEFT JOIN LATERAL (
+                    SELECT reused_count, embedded_count
+                    FROM sync_runs
+                    WHERE document_id = d.id
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                ) r ON TRUE
                 WHERE (s.document_id IS NULL AND %s)
                    OR s.collection_id = ANY(%s::text[])
-                GROUP BY d.id, s.collection_id
+                GROUP BY d.id, s.collection_id, r.reused_count, r.embedded_count
                 ORDER BY d.updated_at DESC
                 """,
                 (scope.include_local_documents, list(scope.allowed_collection_ids)),

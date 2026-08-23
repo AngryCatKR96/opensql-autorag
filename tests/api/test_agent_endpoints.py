@@ -175,3 +175,27 @@ def test_sync_status_of_an_unknown_document_is_null(client, seeded):
 )
 def test_an_id_that_is_not_a_uuid_is_refused(client, path):
     assert as_developer(client, path).status_code == 422
+
+
+def test_the_listing_carries_the_last_sync_run(client, seeded):
+    """Reuse is the only evidence delta sync works, so the console has to see it."""
+    body = as_developer(client, "/documents").json()
+    rows = {row["title"]: row for row in body}
+
+    assert rows["runbook"]["last_reused_count"] == 1
+    assert rows["runbook"]["last_embedded_count"] == 2
+
+
+def test_a_document_never_indexed_reports_no_counts(client, seeded, db_connection):
+    """Null rather than zero: nothing ran, which is not the same as nothing reused."""
+    Repository(db_connection).create_document_version(
+        title="never-indexed",
+        source_type="md",
+        source_path="/tmp/never-indexed.md",
+        file_hash="0" * 64,
+    )
+    body = as_developer(client, "/documents").json()
+    row = next(r for r in body if r["title"] == "never-indexed")
+
+    assert row["last_reused_count"] is None
+    assert row["last_embedded_count"] is None
