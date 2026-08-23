@@ -307,11 +307,36 @@ pointing anything at a wiki people use.
 docker compose -f infra/docker-compose.yml --profile outline up -d
 ```
 
-Outline at http://localhost:3300, signed in with `admin@autorag.test` or
-`reader@autorag.test`, password `autorag-demo` for both. The first account to
-sign in becomes the workspace admin. Every credential in the compose file is
-fixed and public: the instance holds nothing, and a test stack that needs a
-secret generated before it runs is a test stack nobody runs.
+Outline at http://localhost:3300, with three accounts and the password
+`autorag-demo` for all of them. The first account to sign in becomes the
+workspace admin. Every credential in the compose file is fixed and public: the
+instance holds nothing, and a test stack that needs a secret generated before it
+runs is a test stack nobody runs.
+
+| Account | Role | For |
+|---------|------|-----|
+| `admin@autorag.test` | admin | Reaches everything; the baseline to compare against |
+| `reader@autorag.test` | member | One private collection |
+| `platform@autorag.test` | member | A *different* private collection |
+
+The last two are the interesting pair. Two accounts can only show public against
+private, which looks like a flag on the collection rather than a decision about
+the caller. Two members whose private collections do not overlap show what the
+filter actually does: give each of them a document answering the same question,
+put the documents in their respective collections, and one query returns a
+different answer to each — with the other's document absent rather than ranked
+low. Neither is an admin, so neither result can be explained by privilege.
+
+Grant the memberships through **Collection → Members** in Outline, or:
+
+```bash
+# collections.add_user, with the collection and user ids from
+# collections.list and users.list
+curl -sX POST http://localhost:3300/api/collections.add_user \
+  -H "Authorization: Bearer $AUTORAG_OUTLINE_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"<collection-id>","userId":"<user-id>","permission":"read"}'
+```
 
 Four things about it are not obvious, and each is a real constraint rather than
 a shortcut:

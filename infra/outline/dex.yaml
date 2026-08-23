@@ -47,3 +47,13 @@ staticPasswords:
     username: "reader"
     userID: "9c11d0ee-2b7c-4f51-8a2d-5e6f7a8b9c01"
     hashFromEnv: DEX_READER_HASH
+  # A third account so the permission filter can be shown doing the thing it
+  # actually does. Two accounts can only demonstrate public versus private; the
+  # interesting case is two members whose private collections do not overlap,
+  # where neither is an admin and each is missing what the other can read.
+  # Shares DEX_READER_HASH deliberately -- these are fixed, public, throwaway
+  # credentials, and a second hash would only be a second thing to keep in sync.
+  - email: "platform@autorag.test"
+    username: "platform"
+    userID: "4d7f2a90-8e13-4c6b-b5a2-1f3e9d0c7b52"
+    hashFromEnv: DEX_READER_HASH
